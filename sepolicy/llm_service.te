@@ -69,7 +69,9 @@ allow system_server llm_model_system_file:file { open read getattr map };
 # App access to the LLM service
 # ------------------------------------------------------------------
 
-# Apps with USE_LLM permission can call into the llm binder service.
+# Apps with SUBMIT_LLM_REQUEST permission can call into the llm binder service.
+# This permission is signature|privileged — only system apps (Agentic Launcher,
+# SystemUI) can hold it. Regular apps are MCP tool providers, not AI clients.
 # The permission check is done in Java (LlmManagerService.submit()),
 # but SELinux also needs to allow the binder transaction.
 
