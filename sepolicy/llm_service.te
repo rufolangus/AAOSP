@@ -1,0 +1,95 @@
+# LLM System Service SELinux policy
+#
+# The LLM System Service runs inside system_server and provides
+# on-device LLM inference via llama.cpp. It reads model files,
+# executes native inference, and binds to app-side MCP services.
+#
+# This file goes in: system/sepolicy/private/llm_service.te
+# (Or as an overlay via the AAOSP local manifest.)
+
+# ------------------------------------------------------------------
+# Type declarations
+# ------------------------------------------------------------------
+
+# File type for LLM model files (.gguf)
+type llm_model_data_file, file_type, data_file_type;
+
+# File type for pre-installed models in /system
+type llm_model_system_file, file_type, system_file_type;
+
+# Service type for the "llm" binder service
+type llm_service, system_api_service, system_server_service, service_manager_type;
+
+# ------------------------------------------------------------------
+# system_server: model file access
+# ------------------------------------------------------------------
+
+# Read model files from /data/local/llm/
+allow system_server llm_model_data_file:dir { open read search getattr };
+allow system_server llm_model_data_file:file { open read getattr map };
+
+# Read pre-installed model files from /system/etc/llm/
+allow system_server llm_model_system_file:dir { open read search getattr };
+allow system_server llm_model_system_file:file { open read getattr map };
+
+# mmap is critical — llama.cpp memory-maps model files for performance.
+# Without this, the model loader falls back to read(), which is 10x slower
+# and doubles memory usage.
+
+# ------------------------------------------------------------------
+# system_server: native library loading
+# ------------------------------------------------------------------
+
+# Load libllm_jni.so (which statically links libllama)
+# system_server already has permission to load system_lib_file;
+# no additional rules needed since libllm_jni.so installs to /system/lib64/.
+
+# ------------------------------------------------------------------
+# system_server: binder to MCP app services
+# ------------------------------------------------------------------
+
+# system_server already has binder_call to appdomain via existing policy.
+# The LLM service binds to app-side MCP services (IMcpToolProvider) using
+# standard bindService(). This is covered by:
+#   binder_call(system_server, appdomain)
+# which exists in system_server.te already.
+#
+# No additional binder rules needed — MCP services are regular app services
+# that system_server binds to, same as accessibility, notification listener,
+# dream services, etc.
+
+# ------------------------------------------------------------------
+# system_server: LLM inference threading
+# ------------------------------------------------------------------
+
+# The inference thread needs to set its own priority (THREAD_PRIORITY_BACKGROUND).
+# system_server already has process/sched permissions, no additions needed.
+
+# ------------------------------------------------------------------
+# App access to the LLM service
+# ------------------------------------------------------------------
+
+# Apps with USE_LLM permission can call into the llm binder service.
+# The permission check is done in Java (LlmManagerService.submit()),
+# but SELinux also needs to allow the binder transaction.
+
+# Allow all apps to find the llm service (permission check happens at Java level)
+allow appdomain llm_service:service_manager find;
+
+# ------------------------------------------------------------------
+# Neverallow rules
+# ------------------------------------------------------------------
+
+# Only system_server may access model files directly
+neverallow { domain -system_server -init } llm_model_data_file:file { open read write };
+neverallow { domain -system_server -init } llm_model_system_file:file { open read };
+
+# No process may write to model files in /system
+neverallow domain llm_model_system_file:file { write append };
+
+# No process may execute model files
+neverallow domain llm_model_data_file:file execute;
+neverallow domain llm_model_system_file:file execute;
+
+# Model data files are not executable
+neverallow domain llm_model_data_file:file execute_no_trans;

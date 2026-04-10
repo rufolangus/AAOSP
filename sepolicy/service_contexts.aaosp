@@ -1,0 +1,6 @@
+# AAOSP service contexts
+#
+# Append to: system/sepolicy/private/service_contexts
+# (Or as an overlay via the AAOSP local manifest.)
+
+llm                                    u:object_r:llm_service:s0

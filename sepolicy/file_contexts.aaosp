@@ -1,0 +1,10 @@
+# AAOSP file contexts
+#
+# Append these to: system/sepolicy/private/file_contexts
+# (Or as an overlay via the AAOSP local manifest.)
+
+# LLM model files — data partition (downloaded or pushed via adb)
+/data/local/llm(/.*)?                  u:object_r:llm_model_data_file:s0
+
+# LLM model files — system partition (pre-installed by OEM)
+/system/etc/llm(/.*)?                  u:object_r:llm_model_system_file:s0
