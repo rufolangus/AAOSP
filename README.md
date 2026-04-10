@@ -194,8 +194,8 @@ services/core/.../server/pm/         # McpManifestParser, McpRegistry, McpPackag
 ### Sync
 
 ```bash
-# Initialize AOSP (Android 14)
-repo init -u https://android.googlesource.com/platform/manifest -b android-14.0.0_r1
+# Initialize AOSP (Android 15, API 35)
+repo init -u https://android.googlesource.com/platform/manifest -b android-15.0.0_r1
 
 # Add AAOSP local manifests
 git clone https://github.com/rufolangus/AAOSP.git .repo/local_manifests_src
