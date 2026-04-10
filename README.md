@@ -1,4 +1,4 @@
-# AAOSP — Agentic AOSP
+# Agentic Android Open Source Project (AAOSP)
 
 **Android's natural evolution for the agentic era.**
 
