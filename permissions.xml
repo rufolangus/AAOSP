@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2024 The AAOSP Project
+     Licensed under the Apache License, Version 2.0
+
+     AAOSP permission declarations.
+
+     Append to: frameworks/base/core/res/AndroidManifest.xml
+     (inside the existing <manifest> element)
+-->
+
+<!-- Allows submitting prompts to the LLM System Service.
+     Only system apps signed with the platform certificate can hold this.
+     Regular apps are MCP tool providers — they declare tools in their
+     manifest and implement IMcpToolProvider. They never talk to the LLM
+     directly.
+
+     Held by: Agentic Launcher, SystemUI
+     Checked by: LlmManagerService.submit() -->
+<permission android:name="android.permission.SUBMIT_LLM_REQUEST"
+    android:protectionLevel="signature|privileged"
+    android:label="@string/permlab_submitLlmRequest"
+    android:description="@string/permdesc_submitLlmRequest" />
+
+<!-- Allows the system to bind to an app's MCP service.
+     This is a signature-level permission — only system_server can hold it.
+     Apps should declare this as android:permission on their <mcp-server>
+     service to prevent other apps from binding to their MCP implementation.
+
+     Held by: system_server
+     Used by: LlmManagerService when binding to app MCP services -->
+<permission android:name="android.permission.BIND_LLM_MCP_SERVICE"
+    android:protectionLevel="signature"
+    android:label="@string/permlab_bindLlmMcpService"
+    android:description="@string/permdesc_bindLlmMcpService" />
+
+<!-- String resources to add to frameworks/base/core/res/res/values/strings.xml:
+
+    <string name="permlab_submitLlmRequest">submit AI requests</string>
+    <string name="permdesc_submitLlmRequest">Allows the app to submit
+        prompts to the on-device AI and receive responses. Only system
+        apps can hold this permission.</string>
+
+    <string name="permlab_bindLlmMcpService">bind to AI tool services</string>
+    <string name="permdesc_bindLlmMcpService">Allows the system to bind
+        to app services that provide AI tools. Only the system can hold
+        this permission.</string>
+-->
