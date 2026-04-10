@@ -1,0 +1,26 @@
+// Copyright (C) 2024 The AAOSP Project
+//
+// Licensed under the Apache License, Version 2.0
+
+// Test MCP app: exposes device contacts as MCP tools.
+// This is the reference implementation for how any app becomes
+// an MCP server in AAOSP.
+
+android_app {
+    name: "ContactsMcp",
+
+    srcs: ["src/**/*.java"],
+
+    resource_dirs: ["res"],
+
+    manifest: "AndroidManifest.xml",
+
+    // System app so it gets READ_CONTACTS automatically
+    privileged: true,
+    platform_apis: true,
+    certificate: "platform",
+
+    optimize: {
+        enabled: false,
+    },
+}

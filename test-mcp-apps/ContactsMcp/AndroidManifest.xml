@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2024 The AAOSP Project
+     Licensed under the Apache License, Version 2.0 -->
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.android.contacts.mcp">
+
+    <!-- Read contacts to fulfill search/lookup tools -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <application
+        android:label="@string/app_name">
+
+        <!--
+            MCP Server declaration.
+
+            The LLM System Service parses this at install time and
+            registers the tools in the MCP Registry. When the LLM
+            decides to use a tool, it binds to ContactsMcpService
+            and calls IMcpToolProvider.invokeTool().
+        -->
+        <mcp-server
+            android:name=".ContactsMcpService"
+            android:description="@string/mcp_description"
+            android:permission="android.permission.BIND_LLM_MCP_SERVICE"
+            android:mcpVersion="2024-11-05">
+
+            <tool
+                android:name="search_contacts"
+                android:description="@string/tool_search_desc">
+                <input
+                    android:name="query"
+                    android:mcpType="string"
+                    android:mcpRequired="true"
+                    android:description="@string/input_query_desc" />
+            </tool>
+
+            <tool
+                android:name="get_contact"
+                android:description="@string/tool_get_desc">
+                <input
+                    android:name="name"
+                    android:mcpType="string"
+                    android:mcpRequired="true"
+                    android:description="@string/input_name_desc" />
+            </tool>
+
+            <tool
+                android:name="list_favorites"
+                android:description="@string/tool_favorites_desc" />
+
+            <resource
+                android:name="all_contacts"
+                android:mcpUri="content://com.android.contacts/contacts"
+                android:description="@string/resource_all_desc"
+                android:mcpMimeType="application/json" />
+
+        </mcp-server>
+
+        <!-- The backing service that handles tool invocations -->
+        <service
+            android:name=".ContactsMcpService"
+            android:permission="android.permission.BIND_LLM_MCP_SERVICE"
+            android:exported="true" />
+
+    </application>
+
+</manifest>

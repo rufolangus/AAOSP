@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Contacts MCP</string>
+    <string name="mcp_description">Search and look up contacts on this device</string>
+    <string name="tool_search_desc">Search contacts by name, phone number, or email</string>
+    <string name="tool_get_desc">Get full details for a contact by name</string>
+    <string name="tool_favorites_desc">List starred/favorite contacts</string>
+    <string name="input_query_desc">Search term: name, phone number, or email address</string>
+    <string name="input_name_desc">The contact\'s display name</string>
+    <string name="resource_all_desc">All contacts on the device</string>
+</resources>
