@@ -294,18 +294,24 @@ adb shell restorecon -R /data/local/llm/
 | Component | Status |
 |---|---|
 | MCP manifest schema (`<mcp-server>`, `<tool>`, `<input>`, `<resource>`) | Done |
-| PackageManager integration (parse + cache on install) | Done |
-| LLM System Service (inference, tool calling, session management) | Done |
+| PackageManager integration (parse + cache on install) | Done, needs PMS insertion (cloud build) |
+| LLM System Service (inference, tool calling) | Done |
 | JNI bridge to llama.cpp (modern sampler API) | Done |
 | Qwen 2.5 tiered model config | Done |
-| SDK manager (`LlmManager`, `LlmRequest`) | Done |
-| AIDL interfaces (`ILlmService`, `IMcpToolProvider`, callbacks) | Done |
+| SDK manager (`LlmManager`, `LlmRequest`) | Done, needs session AIDL methods (cloud build) |
+| AIDL interfaces (`ILlmService`, `IMcpToolProvider`, callbacks) | Done, needs session methods |
 | Agentic Launcher (Compose, server-driven UI, history) | Done |
-| Session persistence (SQLite, tool reliability stats) | Done |
+| Human-in-the-loop (consent, confirmation, don't-ask-again, audit) | Done, needs wiring (cloud build) |
+| Session persistence (SQLite, tool reliability stats) | Done, needs wiring (cloud build) |
 | SELinux policies | Done |
 | Permission model (`SUBMIT_LLM_REQUEST` / `BIND_LLM_MCP_SERVICE`) | Done |
 | Test MCP app (ContactsMcp) | Done |
-| **Cloud build + Cuttlefish boot** | **Next** |
+| **Integration wiring + cloud build** | **Next** |
+
+> **Note:** Several components (HITL consent, session store, session AIDL methods)
+> are fully implemented but need to be wired into `LlmManagerService.java` at
+> build time. See `docs/LlmManagerService_patch.md` for exact changes. These
+> patches are blocked on a full AOSP checkout where the file can be edited directly.
 
 ## Contributing
 
