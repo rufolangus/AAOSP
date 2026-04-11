@@ -2,7 +2,22 @@
  * Updated executeToolCall() for LlmManagerService.java
  * with full human-in-the-loop enforcement.
  *
- * Replaces the existing executeToolCall() method.
+ * IMPORTANT: The ResultReceiver must NOT use mInferenceHandler because
+ * the inference thread is blocked on dialogLatch.await(). Using the same
+ * handler would deadlock. Use a separate handler thread (mDialogHandler).
+ *
+ * Add these fields to LlmManagerService:
+ *
+ *   private McpConsentManager mConsentManager;
+ *   private HandlerThread mDialogThread;
+ *   private Handler mDialogHandler;
+ *
+ * Initialize in onBootPhase(PHASE_SYSTEM_SERVICES_READY):
+ *
+ *   mConsentManager = new McpConsentManager(mContext);
+ *   mDialogThread = new HandlerThread("llm-dialog");
+ *   mDialogThread.start();
+ *   mDialogHandler = new Handler(mDialogThread.getLooper());
  */
 
 private String executeToolCall(InferenceSession session,
@@ -12,55 +27,65 @@ private String executeToolCall(InferenceSession session,
     McpRegistry.ToolEntry entry = registry.findTool(toolCall.name);
 
     if (entry == null) {
-        return error("Tool not found: " + toolCall.name);
+        return errorJson("Tool not found: " + toolCall.name);
     }
 
     int userId = android.os.UserHandle.getUserId(session.callingUid);
 
     // ── Layer 1: MCP Server Access Consent ──────────────────────
-    // First-use check: has the user ever granted this app's tools?
 
     int consent = mConsentManager.getConsent(entry.packageName, userId);
 
     if (consent == McpConsentManager.CONSENT_DENIED) {
-        return error("User has denied access to "
+        return errorJson("User denied access to "
                 + entry.packageName + " tools");
     }
 
     if (consent == McpConsentManager.CONSENT_NOT_ASKED) {
-        // Show consent dialog and block until user responds
         boolean granted = showConsentDialog(entry, userId);
 
-        // Record the decision
         mConsentManager.setConsent(
-                entry.packageName,
-                userId,
-                granted,
+                entry.packageName, userId, granted,
                 entry.server.description,
                 entry.server.tools.size());
 
         if (!granted) {
-            return error("User declined access to "
+            return errorJson("User declined access to "
                     + entry.packageName + " tools");
         }
     }
 
     // ── Layer 2: Per-Action Confirmation ─────────────────────────
-    // Destructive tools require confirmation every time.
 
+    boolean wasAutoConfirmed = false;
     boolean userConfirmed = false;
+
     if (entry.tool.requiresConfirmation) {
-        String summary = buildActionSummary(
-                entry.tool, toolCall.argumentsJson);
+        // Check if user previously chose "don't ask again"
+        if (mConsentManager.isAutoConfirmed(
+                entry.packageName, toolCall.name, userId)) {
+            wasAutoConfirmed = true;
+            // Skip the dialog, but still log it
+        } else {
+            String summary = buildActionSummary(
+                    entry.tool, toolCall.argumentsJson);
+            int confirmResult = showConfirmDialog(
+                    entry, toolCall, summary);
 
-        userConfirmed = showConfirmDialog(entry, toolCall, summary);
+            if (confirmResult == McpConfirmationActivity.RESULT_DENIED) {
+                mConsentManager.logToolCall(userId, entry.packageName,
+                        toolCall.name, toolCall.argumentsJson, null,
+                        true, false, false, false, 0);
+                return errorJson("User cancelled " + toolCall.name);
+            }
 
-        if (!userConfirmed) {
-            // Log the declined action
-            mConsentManager.logToolCall(userId, entry.packageName,
-                    toolCall.name, toolCall.argumentsJson, null,
-                    true, false, false, 0);
-            return error("User cancelled " + toolCall.name);
+            userConfirmed = true;
+
+            // If user checked "don't ask again", save it
+            if (confirmResult == McpConfirmationActivity.RESULT_AUTO_CONFIRM) {
+                mConsentManager.setAutoConfirm(
+                        entry.packageName, toolCall.name, userId);
+            }
         }
     }
 
@@ -90,22 +115,18 @@ private String executeToolCall(InferenceSession session,
             Context.BIND_AUTO_CREATE | Context.BIND_FOREGROUND_SERVICE);
 
     if (!bound) {
-        mConsentManager.logToolCall(userId, entry.packageName,
-                toolCall.name, toolCall.argumentsJson, null,
-                entry.tool.requiresConfirmation, userConfirmed,
-                false, 0);
-        return error("Failed to bind to " + component);
+        logFailure(userId, entry, toolCall, "Bind failed",
+                userConfirmed, wasAutoConfirmed, 0);
+        return errorJson("Failed to bind to " + component);
     }
 
     long startTime = System.currentTimeMillis();
     try {
         if (!latch.await(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            mConsentManager.logToolCall(userId, entry.packageName,
-                    toolCall.name, toolCall.argumentsJson,
-                    "Bind timeout",
-                    entry.tool.requiresConfirmation, userConfirmed,
-                    false, System.currentTimeMillis() - startTime);
-            return error("Timeout binding to " + component);
+            logFailure(userId, entry, toolCall, "Bind timeout",
+                    userConfirmed, wasAutoConfirmed,
+                    System.currentTimeMillis() - startTime);
+            return errorJson("Timeout binding to " + component);
         }
 
         String result = provider[0].invokeTool(
@@ -116,46 +137,48 @@ private String executeToolCall(InferenceSession session,
         mConsentManager.logToolCall(userId, entry.packageName,
                 toolCall.name, toolCall.argumentsJson, result,
                 entry.tool.requiresConfirmation, userConfirmed,
-                true, latency);
+                wasAutoConfirmed, true, latency);
 
-        // Also update tool reliability stats
         mSessionStore.recordToolSuccess(
                 toolCall.name, entry.packageName, latency);
         mSessionStore.addToolMessage(session.sessionId,
                 toolCall.name, toolCall.argumentsJson, result);
 
         Log.i(TAG, "Tool " + toolCall.name + " completed in "
-                + latency + "ms");
+                + latency + "ms"
+                + (wasAutoConfirmed ? " (auto-confirmed)" : ""));
         return result != null ? result : "{\"result\": null}";
 
     } catch (RemoteException e) {
         long latency = System.currentTimeMillis() - startTime;
-        mConsentManager.logToolCall(userId, entry.packageName,
-                toolCall.name, toolCall.argumentsJson, e.getMessage(),
-                entry.tool.requiresConfirmation, userConfirmed,
-                false, latency);
+        logFailure(userId, entry, toolCall, e.getMessage(),
+                userConfirmed, wasAutoConfirmed, latency);
         mSessionStore.recordToolError(
                 toolCall.name, entry.packageName, e.getMessage());
-        return error("Remote exception: " + e.getMessage());
+        return errorJson("Remote exception: " + e.getMessage());
     } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        return error("Interrupted");
+        return errorJson("Interrupted");
     } finally {
         mContext.unbindService(conn);
     }
 }
 
 /**
- * Show a first-use consent dialog for an MCP server.
- * Blocks the calling thread until the user responds.
+ * Show consent dialog. Blocks until user responds.
+ * Uses mDialogHandler (NOT mInferenceHandler) to avoid deadlock.
  *
- * @return true if the user granted access
+ * @return true if user granted access
  */
-private boolean showConsentDialog(McpRegistry.ToolEntry entry, int userId) {
+private boolean showConsentDialog(McpRegistry.ToolEntry entry,
+        int userId) {
     CountDownLatch dialogLatch = new CountDownLatch(1);
     boolean[] result = {false};
 
-    ResultReceiver receiver = new ResultReceiver(mInferenceHandler) {
+    // CRITICAL: use mDialogHandler, not mInferenceHandler.
+    // mInferenceHandler's thread is blocked on this latch — using it
+    // for the ResultReceiver would deadlock.
+    ResultReceiver receiver = new ResultReceiver(mDialogHandler) {
         @Override
         protected void onReceiveResult(int resultCode, Bundle data) {
             result[0] = (resultCode == McpConfirmationActivity.RESULT_GRANTED);
@@ -163,22 +186,10 @@ private boolean showConsentDialog(McpRegistry.ToolEntry entry, int userId) {
         }
     };
 
-    // Get app label
-    String appLabel;
-    try {
-        ApplicationInfo appInfo = mContext.getPackageManager()
-                .getApplicationInfo(entry.packageName, 0);
-        appLabel = mContext.getPackageManager()
-                .getApplicationLabel(appInfo).toString();
-    } catch (PackageManager.NameNotFoundException e) {
-        appLabel = entry.packageName;
-    }
-
-    // Build tool name list
-    String[] toolNames = new String[entry.server.tools.size()];
-    for (int i = 0; i < entry.server.tools.size(); i++) {
-        toolNames[i] = entry.server.tools.get(i).name;
-    }
+    String appLabel = getAppLabel(entry.packageName);
+    String[] toolNames = entry.server.tools.stream()
+            .map(t -> t.name)
+            .toArray(String[]::new);
 
     Intent intent = new Intent(mContext, McpConfirmationActivity.class);
     intent.putExtra(McpConfirmationActivity.EXTRA_TYPE,
@@ -195,8 +206,11 @@ private boolean showConsentDialog(McpRegistry.ToolEntry entry, int userId) {
     mContext.startActivity(intent);
 
     try {
-        // Wait for user response (no timeout — user decides)
-        dialogLatch.await();
+        // 60-second timeout — if activity crashes, don't hang forever
+        if (!dialogLatch.await(60, TimeUnit.SECONDS)) {
+            Log.w(TAG, "Consent dialog timed out for " + entry.packageName);
+            return false;
+        }
     } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return false;
@@ -206,40 +220,30 @@ private boolean showConsentDialog(McpRegistry.ToolEntry entry, int userId) {
 }
 
 /**
- * Show a confirmation dialog for a destructive tool action.
- * Blocks the calling thread until the user responds.
+ * Show confirmation dialog. Blocks until user responds.
  *
- * @return true if the user confirmed
+ * @return RESULT_GRANTED, RESULT_DENIED, or RESULT_AUTO_CONFIRM
  */
-private boolean showConfirmDialog(McpRegistry.ToolEntry entry,
+private int showConfirmDialog(McpRegistry.ToolEntry entry,
         ToolCallRequest toolCall, String actionSummary) {
     CountDownLatch dialogLatch = new CountDownLatch(1);
-    boolean[] result = {false};
+    int[] result = {McpConfirmationActivity.RESULT_DENIED};
 
-    ResultReceiver receiver = new ResultReceiver(mInferenceHandler) {
+    ResultReceiver receiver = new ResultReceiver(mDialogHandler) {
         @Override
         protected void onReceiveResult(int resultCode, Bundle data) {
-            result[0] = (resultCode == McpConfirmationActivity.RESULT_GRANTED);
+            result[0] = resultCode;
             dialogLatch.countDown();
         }
     };
-
-    String appLabel;
-    try {
-        ApplicationInfo appInfo = mContext.getPackageManager()
-                .getApplicationInfo(entry.packageName, 0);
-        appLabel = mContext.getPackageManager()
-                .getApplicationLabel(appInfo).toString();
-    } catch (PackageManager.NameNotFoundException e) {
-        appLabel = entry.packageName;
-    }
 
     Intent intent = new Intent(mContext, McpConfirmationActivity.class);
     intent.putExtra(McpConfirmationActivity.EXTRA_TYPE,
             McpConfirmationActivity.TYPE_CONFIRM);
     intent.putExtra(McpConfirmationActivity.EXTRA_PACKAGE_NAME,
             entry.packageName);
-    intent.putExtra(McpConfirmationActivity.EXTRA_APP_LABEL, appLabel);
+    intent.putExtra(McpConfirmationActivity.EXTRA_APP_LABEL,
+            getAppLabel(entry.packageName));
     intent.putExtra(McpConfirmationActivity.EXTRA_TOOL_NAME, toolCall.name);
     intent.putExtra(McpConfirmationActivity.EXTRA_ACTION_SUMMARY,
             actionSummary);
@@ -249,41 +253,38 @@ private boolean showConfirmDialog(McpRegistry.ToolEntry entry,
     mContext.startActivity(intent);
 
     try {
-        dialogLatch.await();
+        if (!dialogLatch.await(60, TimeUnit.SECONDS)) {
+            Log.w(TAG, "Confirm dialog timed out for " + toolCall.name);
+            return McpConfirmationActivity.RESULT_DENIED;
+        }
     } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        return false;
+        return McpConfirmationActivity.RESULT_DENIED;
     }
 
     return result[0];
 }
 
-/**
- * Build a human-readable summary of what a tool call will do.
- * Used in the confirmation dialog.
- */
-private String buildActionSummary(McpToolInfo tool, String argsJson) {
+private String getAppLabel(String packageName) {
     try {
-        JSONObject args = new JSONObject(argsJson);
-        StringBuilder sb = new StringBuilder();
-        sb.append(tool.description != null ? tool.description : tool.name);
-        sb.append("\n\n");
-
-        for (McpInputInfo input : tool.inputs) {
-            if (args.has(input.name)) {
-                String label = input.description != null
-                        ? input.description : input.name;
-                sb.append(label).append(": ")
-                        .append(args.opt(input.name)).append("\n");
-            }
-        }
-
-        return sb.toString().trim();
-    } catch (JSONException e) {
-        return tool.description != null ? tool.description : tool.name;
+        ApplicationInfo appInfo = mContext.getPackageManager()
+                .getApplicationInfo(packageName, 0);
+        return mContext.getPackageManager()
+                .getApplicationLabel(appInfo).toString();
+    } catch (PackageManager.NameNotFoundException e) {
+        return packageName;
     }
 }
 
-private static String error(String message) {
+private void logFailure(int userId, McpRegistry.ToolEntry entry,
+        ToolCallRequest toolCall, String error,
+        boolean userConfirmed, boolean autoConfirmed, long latencyMs) {
+    mConsentManager.logToolCall(userId, entry.packageName,
+            toolCall.name, toolCall.argumentsJson, error,
+            entry.tool.requiresConfirmation, userConfirmed,
+            autoConfirmed, false, latencyMs);
+}
+
+private static String errorJson(String message) {
     return "{\"error\": " + JSONObject.quote(message) + "}";
 }

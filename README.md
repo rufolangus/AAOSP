@@ -166,6 +166,58 @@ Apps are tools, not clients. They never talk to the LLM — the LLM talks to the
 
 Third-party apps cannot submit arbitrary prompts to the LLM. They can only offer tools and wait to be called. This prevents abuse and keeps the user in control through the launcher.
 
+## Human in the Loop
+
+The user is always in control. Three layers of consent, from coarse to fine:
+
+### Layer 1: MCP Server Access (first-use, per-app)
+
+The first time the LLM wants to use any tool from an app, the system shows a consent dialog:
+
+```
+┌──────────────────────────────────────┐
+│ Allow AI to use Contacts?            │
+│                                      │
+│ This app's AI tools:                 │
+│ * Search contacts                    │
+│ * Get contact details                │
+│ * List favorites                     │
+│                                      │
+│ You can change this anytime in       │
+│ Settings -> AI -> Tool Access.       │
+│                                      │
+│     [Don't Allow]      [Allow]       │
+└──────────────────────────────────────┘
+```
+
+The decision is persisted and revocable in Settings. Same pattern as Android runtime permissions.
+
+### Layer 2: Action Confirmation (per-call, destructive tools)
+
+Tools with `mcpRequiresConfirmation="true"` show what will happen before it happens:
+
+```
+┌──────────────────────────────────────┐
+│ Send message?                        │
+│                                      │
+│ To: John Smith                       │
+│ Message: "Running late, be there     │
+│ in 20 min"                           │
+│                                      │
+│ [ ] Don't ask again for this action  │
+│                                      │
+│     [Cancel]          [Send]         │
+└──────────────────────────────────────┘
+```
+
+The "Don't ask again" checkbox lets the user auto-confirm tools they trust. Auto-confirms are per-tool, per-user, and revocable in Settings. Revoking server access (Layer 1) also clears all auto-confirms for that app.
+
+### Layer 3: Audit Trail (passive, always on)
+
+Every tool call is logged: what tool, what arguments, what result, whether confirmation was required/auto-confirmed, success or failure, latency. Users can review this in Settings under AI activity. Capped at 1000 entries per user.
+
+The flow: **check consent -> prompt if needed -> check confirmation -> prompt or auto-confirm -> execute -> log everything.**
+
 ## Project Structure
 
 | Repo | What | Branch |
