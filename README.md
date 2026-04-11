@@ -254,8 +254,11 @@ git clone https://github.com/rufolangus/AAOSP.git .repo/local_manifests_src
 mkdir -p .repo/local_manifests
 cp .repo/local_manifests_src/local_manifests/*.xml .repo/local_manifests/
 
-# Sync (pulls AAOSP forks automatically)
-repo sync -c -j$(nproc)
+# Sync (~100GB, 1-2 hours)
+repo sync -c -j$(nproc) --no-tags --optimized-fetch
+
+# Shallow clone may miss VNDK v32 — sync it separately
+repo sync prebuilts/vndk/v32 -j4
 ```
 
 ### Prepare llama.cpp and model
@@ -274,7 +277,7 @@ cd ../..
 
 ```bash
 source build/envsetup.sh
-lunch aosp_cf_x86_64_phone-userdebug   # Cuttlefish (cloud/emulator)
+lunch aosp_cf_x86_64_phone-trunk_staging-userdebug   # Cuttlefish
 m -j$(nproc)
 ```
 
