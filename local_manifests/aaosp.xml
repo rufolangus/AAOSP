@@ -1,22 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
-
-  <!-- AAOSP Remote -->
   <remote name="aaosp"
           fetch="https://github.com/rufolangus"
           revision="aaosp" />
 
-  <!--
-    Override upstream frameworks/base with our fork.
-    The "remove-project" drops the AOSP original so ours takes its place.
-  -->
+  <!-- Override upstream frameworks/base with our fork
+       (rebased on android-15.0.0_r1) -->
   <remove-project name="platform/frameworks/base" />
   <project path="frameworks/base"
            name="platform_frameworks_base"
            remote="aaosp"
            revision="aaosp" />
-
-  <!-- New projects (not in upstream AOSP) -->
 
   <!-- Agentic Launcher -->
   <project path="packages/apps/AgenticLauncher"
@@ -29,5 +23,4 @@
            name="platform_external_llamacpp"
            remote="aaosp"
            revision="main" />
-
 </manifest>
