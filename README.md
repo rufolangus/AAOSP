@@ -345,9 +345,13 @@ on Cuttlefish; MCP manifest discovery is the open issue under active debugging).
 If you're interested in agentic Android, the highest-impact contributions right now:
 
 - **MCP apps**: Add `<mcp-server>` declarations to AOSP built-in apps (Messaging, Calendar, Settings, Clock, Camera)
-- **Cloud build**: Help get the first successful build on Cuttlefish
-- **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed
-- **Launcher UX**: The server-driven UI schema needs more element types (charts, images, forms)
+- **MCP discovery debugging**: Why is `<service>` dropped during PMS scan when ContactsMcp is platform-signed and BIND_LLM_MCP_SERVICE is `signature|privileged`? See open issue above.
+- **HITL wiring**: The consent / confirmation / audit UI is designed in `docs/` but not yet wired into `LlmManagerService`.
+- **Session persistence**: Wire `LlmSessionStore` (SQLite) into the binder API so sessions survive process restart.
+- **Tiered model selector**: Auto-pick Qwen 2.5 size (0.5B / 1.5B / 3B / 7B) by `ActivityManager.MemoryInfo.totalMem`.
+- **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed.
+- **Launcher UX**: The server-driven UI schema needs more element types (charts, images, forms).
+- **Repo manifest hardening**: Push `system/sepolicy` and `device/google/cuttlefish` forks (currently blocked on github pack-size limit; needs `git gc` or orphan-branch workaround).
 
 ## License
 
