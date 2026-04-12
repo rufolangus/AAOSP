@@ -333,11 +333,12 @@ Designed and implemented but **not yet wired/verified**:
 > **Resolved (2026-04-12):** Tool-call loop is verified end-to-end on Cuttlefish
 > with Qwen 2.5 0.5B + ContactsMcp.
 >
-> **Demo:** [Loom recording](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
-> of the launcher answering "what's John's number?" — the LLM emits a
-> `<tool_call>` for `search_contacts`, AAOSP dispatches to ContactsMcp via
+> **Demo:** the launcher answering "what's John's number?" — the LLM emits
+> a `<tool_call>` for `search_contacts`, AAOSP dispatches to ContactsMcp via
 > `IMcpToolProvider.invokeTool()`, the result round-trips back to a second
-> LLM pass, and the answer surfaces in the chat UI. Two non-obvious root causes (which took
+> LLM pass, and the answer surfaces in the chat UI.
+>
+> [![AAOSP demo — what's John's number?](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-with-play.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e) Two non-obvious root causes (which took
 > hours to find) were the culprits — both documented in
 > **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**:
 >
