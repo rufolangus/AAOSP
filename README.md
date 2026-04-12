@@ -222,10 +222,17 @@ The flow: **check consent -> prompt if needed -> check confirmation -> prompt or
 
 | Repo | What | Branch |
 |---|---|---|
-| **[AAOSP](https://github.com/rufolangus/AAOSP)** | Umbrella: manifests, SELinux, test apps, docs | `main` |
-| **[platform_frameworks_base](https://github.com/rufolangus/platform_frameworks_base)** | LLM Service, MCP schema, AIDL, SDK manager, session store | `aaosp` |
-| **[platform_packages_apps_AgenticLauncher](https://github.com/rufolangus/platform_packages_apps_AgenticLauncher)** | Compose launcher with server-driven UI and history | `main` |
-| **[platform_external_llamacpp](https://github.com/rufolangus/platform_external_llamacpp)** | llama.cpp build integration, JNI bridge, model scripts | `main` |
+| **[AAOSP](https://github.com/rufolangus/AAOSP)** | Umbrella: `repo` manifests, SELinux, test apps, docs | `main` |
+| **[platform_frameworks_base](https://github.com/rufolangus/platform_frameworks_base)** | LLM Service, MCP schema/parser, BIND_LLM_MCP_SERVICE, ParsingPackageUtils + aapt2 patches, AIDL | `aaosp-v15` |
+| **[platform_packages_apps_AgenticLauncher](https://github.com/rufolangus/platform_packages_apps_AgenticLauncher)** | Compose launcher, binder client, privapp permission allowlist | `main` |
+| **[platform_packages_apps_ContactsMcp](https://github.com/rufolangus/platform_packages_apps_ContactsMcp)** | Reference MCP-providing app (`search_contacts`, `get_contact`, `list_favorites`) | `main` |
+| **[platform_external_llamacpp](https://github.com/rufolangus/platform_external_llamacpp)** | llama.cpp Android.bp, `libllm_jni.so` JNI bridge | `main` |
+| **[aaosp_platform_build](https://github.com/rufolangus/aaosp_platform_build)** | `PRODUCT_PACKAGES` + privapp xml install for system_ext | `aaosp` |
+| **aaosp_system_sepolicy** | `llm` service_contexts + fuzzer exception (fork created, push pending pack-size fix) | `aaosp` |
+| **aaosp_device_google_cuttlefish** | Cuttlefish bring-up tweaks (fork created, push pending pack-size fix) | `aaosp` |
+
+For the deep technical view (file-by-file changes, build pitfalls, debugging
+gotchas, current state of bring-up), see **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**.
 
 ### frameworks/base components
 
@@ -294,31 +301,48 @@ adb shell restorecon -R /data/local/llm/
 
 ## Status
 
+Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug`):
+
 | Component | Status |
 |---|---|
-| MCP manifest schema (`<mcp-server>`, `<tool>`, `<input>`, `<resource>`) | Done |
-| PackageManager integration (parse + cache on install) | Done, needs PMS insertion (cloud build) |
-| LLM System Service (inference, tool calling) | Done |
-| JNI bridge to llama.cpp (modern sampler API) | Done |
-| Qwen 2.5 tiered model config | Done |
-| SDK manager (`LlmManager`, `LlmRequest`) | Done, needs session AIDL methods (cloud build) |
-| AIDL interfaces (`ILlmService`, `IMcpToolProvider`, callbacks) | Done, needs session methods |
-| Agentic Launcher (Compose, server-driven UI, history) | Done |
-| Human-in-the-loop (consent, confirmation, don't-ask-again, audit) | Done, needs wiring (cloud build) |
-| Session persistence (SQLite, tool reliability stats) | Done, needs wiring (cloud build) |
-| SELinux policies | Done |
-| Permission model (`SUBMIT_LLM_REQUEST` / `BIND_LLM_MCP_SERVICE`) | Done |
-| Test MCP app (ContactsMcp) | Done |
-| **Integration wiring + cloud build** | **Next** |
+| AOSP build pipeline (`m -j32` → `system.img` → `launch_cvd`) | ✅ Boots |
+| `libllm_jni.so` (llama.cpp b4547, x86_64 silvermont) | ✅ Loads in `system_server` |
+| Qwen 2.5 0.5B GGUF model load (ctx=2048, vocab=151936) | ✅ Loads |
+| `LlmManagerService` binder API (`service llm: found`) | ✅ Live |
+| MCP manifest schema (aapt2 whitelist for `<mcp-server>`/`<tool>`/`<input>`/`<resource>`) | ✅ Compiles |
+| `ParsingPackageUtils` patch — skip `<mcp-server>` subtree cleanly | ✅ In-tree |
+| `BIND_LLM_MCP_SERVICE` permission `signature\|privileged` | ⚠️ In-tree, awaiting verify (Soong cache flush in progress) |
+| `McpManifestParser` runtime parse from APK | ⚠️ Wired via `LlmManagerService.parseManifestMcpServers()`, not yet observed registering tools |
+| `discoverMcpServices()` at `PHASE_BOOT_COMPLETED` | ⚠️ Runs, currently reports `0 package(s), 0 tool(s)` |
+| ContactsMcp installs as `/system_ext/priv-app/` | ✅ Installs, but `<service>` is being silently dropped during PMS scan |
+| Agentic Launcher install | ✅ Installs |
+| SELinux `llm` service_contexts | ✅ Live |
+| Privapp permission allowlist for `SUBMIT_LLM_REQUEST` | ✅ Live |
 
-> **Note:** Several components (HITL consent, session store, session AIDL methods)
-> are fully implemented but need to be wired into `LlmManagerService.java` at
-> build time. See `docs/LlmManagerService_patch.md` for exact changes. These
-> patches are blocked on a full AOSP checkout where the file can be edited directly.
+Designed and implemented but **not yet wired/verified**:
+
+| Component | Status |
+|---|---|
+| Human-in-the-loop UI (consent / confirmation / don't-ask-again / audit) | Designed in `docs/`, not yet wired into `LlmManagerService` |
+| `LlmSessionStore` SQLite persistence + tool reliability stats | Class scaffolded, not yet wired |
+| Session AIDL methods on `ILlmService` | Designed, not yet added |
+| Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | 0.5B verified; tiering logic not yet built |
+| Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
+
+> **Open issue tonight (2026-04-12):** `dumpsys package com.android.contacts.mcp`
+> shows no Service entries despite a correct manifest, BIND_LLM_MCP_SERVICE
+> permission existing, and ContactsMcp being platform-signed in `/system_ext/priv-app/`.
+> Hypothesis: Soong's incremental cache served a stale `framework-res.apk`
+> that still has the old `signature`-only protection level — currently
+> rebuilding from scratch after `rm -rf out/soong/.intermediates/.../core/res`
+> to verify. See **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**
+> for the full debugging trail.
 
 ## Contributing
 
-This is early-stage. The first build hasn't happened yet. If you're interested in agentic Android, the highest-impact contributions right now:
+This is early-stage. The first build has now happened (LLM is verified end-to-end
+on Cuttlefish; MCP manifest discovery is the open issue under active debugging).
+If you're interested in agentic Android, the highest-impact contributions right now:
 
 - **MCP apps**: Add `<mcp-server>` declarations to AOSP built-in apps (Messaging, Calendar, Settings, Clock, Camera)
 - **Cloud build**: Help get the first successful build on Cuttlefish
