@@ -8,6 +8,10 @@ Android has always been a platform built on protocols. Intents, Content Provider
 
 AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS runs the model. The user just talks.
 
+[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-with-play.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+
+*Above: launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through the LLM, and the answer renders in the chat UI. Verified live on Cuttlefish, 2026-04-12.*
+
 ## What This Is
 
 An AOSP fork that adds three things:
@@ -330,26 +334,19 @@ Designed and implemented but **not yet wired/verified**:
 | Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | 0.5B verified; tiering logic not yet built |
 | Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
 
-> **Resolved (2026-04-12):** Tool-call loop is verified end-to-end on Cuttlefish
-> with Qwen 2.5 0.5B + ContactsMcp.
->
-> **Demo:** the launcher answering "what's John's number?" — the LLM emits
-> a `<tool_call>` for `search_contacts`, AAOSP dispatches to ContactsMcp via
-> `IMcpToolProvider.invokeTool()`, the result round-trips back to a second
-> LLM pass, and the answer surfaces in the chat UI.
->
-> [![AAOSP demo — what's John's number?](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-with-play.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e) Two non-obvious root causes (which took
-> hours to find) were the culprits — both documented in
-> **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**:
->
-> 1. PMS silently drops `<service>` declarations without `<intent-filter>` in Android 15.
-> 2. `getInstalledPackages(GET_SERVICES)` returns `services=null` for system_ext priv-apps unless `MATCH_DISABLED_COMPONENTS | MATCH_DIRECT_BOOT_AWARE | MATCH_DIRECT_BOOT_UNAWARE` are also passed.
+Two non-obvious Android-15 root causes that took hours to find — both
+documented in **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**:
+
+1. PMS silently drops `<service>` declarations without `<intent-filter>`.
+2. `getInstalledPackages(GET_SERVICES)` returns `services=null` for system_ext
+   priv-apps unless `MATCH_DISABLED_COMPONENTS | MATCH_DIRECT_BOOT_AWARE | MATCH_DIRECT_BOOT_UNAWARE`
+   are also passed.
 
 ## Contributing
 
-This is early-stage. The first build has now happened (LLM is verified end-to-end
-on Cuttlefish; MCP manifest discovery is the open issue under active debugging).
-If you're interested in agentic Android, the highest-impact contributions right now:
+This is early-stage. The end-to-end agentic loop is verified on Cuttlefish
+(see demo above). If you're interested in agentic Android, the highest-impact
+contributions right now:
 
 - **MCP apps**: Add `<mcp-server>` declarations to AOSP built-in apps (Messaging, Calendar, Settings, Clock, Camera)
 - **MCP discovery debugging**: Why is `<service>` dropped during PMS scan when ContactsMcp is platform-signed and BIND_LLM_MCP_SERVICE is `signature|privileged`? See open issue above.
