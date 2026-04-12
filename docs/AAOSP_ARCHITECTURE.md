@@ -169,23 +169,36 @@ adb shell logcat -d -s LlmManagerService LlmJNI McpManifestParser
 
 ## Current state (2026-04-12)
 
-End-to-end **LLM** path is verified working:
+End-to-end **LLM + MCP tool-calling loop is verified working** on Cuttlefish:
+
 - `libllm_jni.so` loads in `system_server`
 - Qwen 2.5 0.5B model loads (`vocab=151936, ctx=2048`)
 - `service llm: found` — binder API is live
+- `discoverMcpServices()` runs at `PHASE_BOOT_COMPLETED` →
+  `MCP discovery complete: 1 package(s), 3 tool(s)`
+- `ContactsMcp`'s `<mcp-server>` is parsed; tools (`search_contacts`,
+  `get_contact`, `list_favorites`) are registered into `McpRegistry`.
+- `LlmManagerService.buildPrompt()` injects a `<tools>...</tools>` block
+  in Qwen's expected format into the system prompt.
+- Qwen 0.5B emits `<tool_call>{"name":"search_contacts","arguments":{...}}</tool_call>`
+- The dispatcher parses the tool call, binds to `ContactsMcpService` via
+  `IMcpToolProvider.invokeTool()`, runs the contacts query, and returns
+  the result.
+- `NativeTokenCallback` suppresses the raw `<tool_call>` markup from the
+  token stream; the launcher only sees the humanized tool result.
 
-End-to-end **MCP** path is **not yet verified**:
-- `discoverMcpServices()` runs at `PHASE_BOOT_COMPLETED` and reports
-  `0 package(s), 0 tool(s)`.
-- `ContactsMcp` is installed (`pm list packages` shows it) and its APK
-  manifest is correct (`<service>` + `<mcp-server>` both present after
-  reorder, both with `BIND_LLM_MCP_SERVICE` permission).
-- `dumpsys package com.android.contacts.mcp` shows **no Service entries**
-  — PMS is silently dropping the `<service>` declaration during scan.
-- Protection-level fix in source (`signature` → `signature|privileged`)
-  has not yet propagated into the running `framework-res.apk` due to
-  Soong incremental cache. Currently mid-rebuild after `rm -rf` of
-  `out/soong/.intermediates/frameworks/base/{core/res,framework-res}`.
+### Root causes that took most of the night to find
+
+1. **PMS silently drops `<service>` declarations without an `<intent-filter>`**
+   in Android 15. Add a no-op filter (e.g. `<action android:name="android.llm.MCP_SERVICE" />`)
+   to register the service.
+2. **`pm.getInstalledPackages(GET_SERVICES)` returns `services=null`** for
+   system_ext priv-apps unless you also pass
+   `MATCH_DISABLED_COMPONENTS | MATCH_DIRECT_BOOT_AWARE | MATCH_DIRECT_BOOT_UNAWARE`.
+3. **Runtime permissions for system_ext apps are not auto-granted** —
+   `READ_CONTACTS` on ContactsMcp must be granted via `pm grant` or a
+   `default-permissions-aaosp.xml` in `/system_ext/etc/default-permissions/`
+   (TODO).
 
 ## Known gotchas (learned the hard way)
 

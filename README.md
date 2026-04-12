@@ -310,14 +310,15 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 | Qwen 2.5 0.5B GGUF model load (ctx=2048, vocab=151936) | ✅ Loads |
 | `LlmManagerService` binder API (`service llm: found`) | ✅ Live |
 | MCP manifest schema (aapt2 whitelist for `<mcp-server>`/`<tool>`/`<input>`/`<resource>`) | ✅ Compiles |
-| `ParsingPackageUtils` patch — skip `<mcp-server>` subtree cleanly | ✅ In-tree |
-| `BIND_LLM_MCP_SERVICE` permission `signature\|privileged` | ⚠️ In-tree, awaiting verify (Soong cache flush in progress) |
-| `McpManifestParser` runtime parse from APK | ⚠️ Wired via `LlmManagerService.parseManifestMcpServers()`, not yet observed registering tools |
-| `discoverMcpServices()` at `PHASE_BOOT_COMPLETED` | ⚠️ Runs, currently reports `0 package(s), 0 tool(s)` |
-| ContactsMcp installs as `/system_ext/priv-app/` | ✅ Installs, but `<service>` is being silently dropped during PMS scan |
+| `ParsingPackageUtils` patch — skip `<mcp-server>` subtree cleanly | ✅ Live |
+| `BIND_LLM_MCP_SERVICE` permission `signature\|privileged` | ✅ Live |
+| `McpManifestParser` runtime parse from APK | ✅ Registers tools |
+| `discoverMcpServices()` at `PHASE_BOOT_COMPLETED` | ✅ `1 package(s), 3 tool(s)` |
+| ContactsMcp installs as `/system_ext/priv-app/` with `<service>` registered | ✅ (requires `<intent-filter>` on the service — see Gotchas) |
 | Agentic Launcher install | ✅ Installs |
 | SELinux `llm` service_contexts | ✅ Live |
 | Privapp permission allowlist for `SUBMIT_LLM_REQUEST` | ✅ Live |
+| Tool-call loop: prompt injection → Qwen `<tool_call>` → dispatch to `IMcpToolProvider.invokeTool()` → humanized result | ✅ Verified end-to-end with Qwen 2.5 0.5B + ContactsMcp |
 
 Designed and implemented but **not yet wired/verified**:
 
@@ -329,14 +330,13 @@ Designed and implemented but **not yet wired/verified**:
 | Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | 0.5B verified; tiering logic not yet built |
 | Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
 
-> **Open issue tonight (2026-04-12):** `dumpsys package com.android.contacts.mcp`
-> shows no Service entries despite a correct manifest, BIND_LLM_MCP_SERVICE
-> permission existing, and ContactsMcp being platform-signed in `/system_ext/priv-app/`.
-> Hypothesis: Soong's incremental cache served a stale `framework-res.apk`
-> that still has the old `signature`-only protection level — currently
-> rebuilding from scratch after `rm -rf out/soong/.intermediates/.../core/res`
-> to verify. See **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**
-> for the full debugging trail.
+> **Resolved (2026-04-12):** Tool-call loop is verified end-to-end on Cuttlefish
+> with Qwen 2.5 0.5B + ContactsMcp. Two non-obvious root causes (which took
+> hours to find) were the culprits — both documented in
+> **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**:
+>
+> 1. PMS silently drops `<service>` declarations without `<intent-filter>` in Android 15.
+> 2. `getInstalledPackages(GET_SERVICES)` returns `services=null` for system_ext priv-apps unless `MATCH_DISABLED_COMPONENTS | MATCH_DIRECT_BOOT_AWARE | MATCH_DIRECT_BOOT_UNAWARE` are also passed.
 
 ## Contributing
 
