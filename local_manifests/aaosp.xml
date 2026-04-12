@@ -4,23 +4,62 @@
           fetch="https://github.com/rufolangus"
           revision="aaosp" />
 
-  <!-- Override upstream frameworks/base with our fork
-       (rebased on android-15.0.0_r1) -->
+  <!-- frameworks/base: LLM System Service, MCP manifest schema/parser,
+       BIND_LLM_MCP_SERVICE permission, ParsingPackageUtils + aapt2
+       <mcp-server> handling. Branch: aaosp-v15. -->
   <remove-project name="platform/frameworks/base" />
   <project path="frameworks/base"
            name="platform_frameworks_base"
            remote="aaosp"
-           revision="aaosp" />
+           revision="aaosp-v15" />
 
-  <!-- Agentic Launcher -->
+  <!-- Agentic Launcher: Compose chat surface + binder client. -->
   <project path="packages/apps/AgenticLauncher"
            name="platform_packages_apps_AgenticLauncher"
            remote="aaosp"
            revision="main" />
 
-  <!-- llama.cpp native runtime -->
+  <!-- ContactsMcp: reference MCP-providing app. -->
+  <project path="packages/apps/ContactsMcp"
+           name="platform_packages_apps_ContactsMcp"
+           remote="aaosp"
+           revision="main" />
+
+  <!-- llama.cpp + JNI bridge (libllm_jni.so). -->
   <project path="external/llama.cpp"
            name="platform_external_llamacpp"
            remote="aaosp"
            revision="main" />
+
+  <!-- build/make: PRODUCT_PACKAGES wiring for AgenticLauncher + ContactsMcp
+       and the AgenticLauncher privapp permission allowlist. -->
+  <remove-project name="platform/build" />
+  <project path="build/make"
+           name="aaosp_platform_build"
+           remote="aaosp"
+           revision="aaosp" />
+
+  <!-- system/sepolicy: 'llm' service_contexts entry + fuzzer exception.
+       NOTE: fork repo created at rufolangus/aaosp_system_sepolicy but
+       not yet pushed (pack-size limit on first push). Apply locally
+       for now; will be enabled here once pushed. -->
+  <!--
+  <remove-project name="platform/system/sepolicy" />
+  <project path="system/sepolicy"
+           name="aaosp_system_sepolicy"
+           remote="aaosp"
+           revision="aaosp" />
+  -->
+
+  <!-- device/google/cuttlefish: relaxed artifact path requirements +
+       product partition tweaks for AAOSP bring-up.
+       NOTE: fork repo created at rufolangus/aaosp_device_google_cuttlefish
+       but not yet pushed (pack-size limit on first push). -->
+  <!--
+  <remove-project name="device/google/cuttlefish" />
+  <project path="device/google/cuttlefish"
+           name="aaosp_device_google_cuttlefish"
+           remote="aaosp"
+           revision="aaosp" />
+  -->
 </manifest>
