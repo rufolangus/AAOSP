@@ -351,6 +351,7 @@ If you're interested in agentic Android, the highest-impact contributions right 
 - **Tiered model selector**: Auto-pick Qwen 2.5 size (0.5B / 1.5B / 3B / 7B) by `ActivityManager.MemoryInfo.totalMem`.
 - **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed.
 - **Launcher UX**: The server-driven UI schema needs more element types (charts, images, forms).
+- **Bake LLM into the OS**: `libllm_jni.so` and the Qwen GGUF currently live in `/data/local/llm/` and are pushed via `adb` after boot. They should ship on `/system/lib64/` and `/product/etc/llm/` (or a dedicated read-only partition) so the LLM is available on first boot with no setup. Requires Soong install rules for the `.so`, a `PRODUCT_COPY_FILES` for the GGUF, and SELinux contexts for the model directory.
 - **Repo manifest hardening**: Push `system/sepolicy` and `device/google/cuttlefish` forks (currently blocked on github pack-size limit; needs `git gc` or orphan-branch workaround).
 
 ## License
