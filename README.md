@@ -331,7 +331,13 @@ Designed and implemented but **not yet wired/verified**:
 | Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
 
 > **Resolved (2026-04-12):** Tool-call loop is verified end-to-end on Cuttlefish
-> with Qwen 2.5 0.5B + ContactsMcp. Two non-obvious root causes (which took
+> with Qwen 2.5 0.5B + ContactsMcp.
+>
+> **Demo:** [Loom recording](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+> of the launcher answering "what's John's number?" — the LLM emits a
+> `<tool_call>` for `search_contacts`, AAOSP dispatches to ContactsMcp via
+> `IMcpToolProvider.invokeTool()`, the result round-trips back to a second
+> LLM pass, and the answer surfaces in the chat UI. Two non-obvious root causes (which took
 > hours to find) were the culprits — both documented in
 > **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**:
 >

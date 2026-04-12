@@ -169,7 +169,9 @@ adb shell logcat -d -s LlmManagerService LlmJNI McpManifestParser
 
 ## Current state (2026-04-12)
 
-End-to-end **LLM + MCP tool-calling loop is verified working** on Cuttlefish:
+End-to-end **LLM + MCP tool-calling loop is verified working** on Cuttlefish.
+
+**Demo:** [Loom — launcher answering "what's John's number?"](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
 
 - `libllm_jni.so` loads in `system_server`
 - Qwen 2.5 0.5B model loads (`vocab=151936, ctx=2048`)
