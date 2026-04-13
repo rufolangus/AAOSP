@@ -447,13 +447,9 @@ Designed and implemented but **not yet wired/verified**:
 | Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | 0.5B verified; tiering logic not yet built |
 | Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
 
-Two non-obvious Android-15 root causes that took hours to find — both
-documented in **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**:
-
-1. PMS silently drops `<service>` declarations without `<intent-filter>`.
-2. `getInstalledPackages(GET_SERVICES)` returns `services=null` for system_ext
-   priv-apps unless `MATCH_DISABLED_COMPONENTS | MATCH_DIRECT_BOOT_AWARE | MATCH_DIRECT_BOOT_UNAWARE`
-   are also passed.
+For the platform debugging trail (Android-15 quirks, Soong cache gotchas,
+dm-verity recovery traps), see
+**[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**.
 
 ## Contributing
 
