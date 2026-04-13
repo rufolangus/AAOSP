@@ -8,7 +8,7 @@ Android has always been a platform built on protocols. Intents, Content Provider
 
 AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS runs the model. The user just talks.
 
-[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-with-play.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-0fe3e8877cc50875.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
 
 *Above: launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through the LLM, and the answer renders in the chat UI. Verified live on Cuttlefish, 2026-04-12.*
 

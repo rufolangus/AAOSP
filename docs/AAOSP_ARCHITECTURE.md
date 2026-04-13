@@ -12,7 +12,7 @@ When in doubt about *what AAOSP is*, read the README. When in doubt about
 
 ## Demo
 
-[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-with-play.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-0fe3e8877cc50875.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
 
 *Launcher answering "what's John's number?" — verified end-to-end on Cuttlefish 2026-04-12.*
 
