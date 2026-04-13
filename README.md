@@ -118,7 +118,70 @@ You need **both** an Android `<service>` (the binder endpoint the OS binds to) *
 
 > **Gotcha (Android 15):** the `<intent-filter>` on the `<service>` is **required**, even if your service is only bound by component name. PMS silently drops `<service>` declarations without one. Use any no-op action — `android.llm.MCP_SERVICE` is the convention.
 
-`<mcp-server>` attributes read by the parser today: `android:name`, `android:description`, `android:permission`. Aspirational attributes present in the schema but not yet wired into the runtime: `android:mcpVersion`, `android:mcpRequiresConfirmation`, per-input `android:mcpType` / `android:mcpRequired`, `<resource android:mcpUri=… android:mcpMimeType=…>`.
+### 1b. Full schema
+
+The parser in `frameworks/base/services/core/java/com/android/server/pm/McpManifestParser.java` accepts more than ContactsMcp uses. Here's everything framework-base reads into `McpRegistry` today, shown on a hypothetical `MessagingMcp`:
+
+```xml
+<mcp-server
+    android:name=".MessagingMcpService"
+    android:description="@string/mcp_description"
+    android:permission="android.permission.BIND_LLM_MCP_SERVICE"
+    android:mcpVersion="2024-11-05">
+
+    <!-- Destructive tool with per-tool permission override and typed,
+         required inputs. -->
+    <tool android:name="send_message"
+          android:description="@string/tool_send_desc"
+          android:permission="android.permission.SEND_SMS"
+          android:mcpRequiresConfirmation="true">
+        <input android:name="recipient"
+               android:description="@string/input_recipient_desc"
+               android:mcpType="string"
+               android:mcpRequired="true" />
+        <input android:name="body"
+               android:description="@string/input_body_desc"
+               android:mcpType="string"
+               android:mcpRequired="true" />
+        <input android:name="priority"
+               android:description="@string/input_priority_desc"
+               android:mcpType="string"
+               android:mcpEnumValues="low,normal,high" />
+    </tool>
+
+    <!-- Read-only tool with a typed-integer input. -->
+    <tool android:name="get_recent"
+          android:description="@string/tool_recent_desc">
+        <input android:name="count"
+               android:description="@string/input_count_desc"
+               android:mcpType="integer"
+               android:mcpRequired="false" />
+    </tool>
+
+    <!-- Resource the LLM can read or list via IMcpToolProvider.
+         Surfaces as a typed content:// URI the system can hand back. -->
+    <resource android:name="recent_messages"
+              android:description="@string/resource_recent_desc"
+              android:mcpUri="content://com.example.messaging/recent"
+              android:mimeType="application/json" />
+
+</mcp-server>
+```
+
+### Support matrix (v0.1.0)
+
+| Element / attribute | Parsed into `McpRegistry` | Used in the runtime today |
+|---|---|---|
+| `<mcp-server>` `name` / `description` / `permission` | ✅ | ✅ (binder gating, prompt injection) |
+| `<mcp-server>` `mcpVersion` | ✅ → `McpServerInfo.protocolVersion` | ⚠️ stored, not consumed |
+| `<tool>` `name` / `description` | ✅ | ✅ (listed in `<tools>` prompt block) |
+| `<tool>` `permission` (per-tool override) | ✅ → `McpToolInfo.permission` | ⚠️ stored, not enforced |
+| `<tool>` `mcpRequiresConfirmation` | ✅ → `McpToolInfo.requiresConfirmation` | ⚠️ stored; HITL consent UI is designed, not wired |
+| `<input>` `name` / `description` | ✅ | ✅ |
+| `<input>` `mcpType` (`string` / `number` / `integer` / `boolean` / `array` / `object`) | ✅ → `McpInputInfo.type` | ⚠️ flattened to `"string"` in the current prompt builder |
+| `<input>` `mcpRequired` | ✅ | ✅ (feeds the `required` array of the tool's JSON schema) |
+| `<input>` `mcpEnumValues` (comma-separated) | ✅ → `McpInputInfo.enumValues` | ⚠️ stored, not surfaced in the prompt yet |
+| `<resource>` `name` / `mcpUri` / `description` / `mimeType` | ✅ → `McpResourceInfo` | ⚠️ stored, not exposed to the LLM (no resources block in the prompt yet) |
 
 ### 2. Implement the AIDL interface
 
