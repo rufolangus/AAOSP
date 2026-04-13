@@ -10,7 +10,7 @@ AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS run
 
 [![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-0fe3e8877cc50875.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
 
-> ▶️ **The image above is just a thumbnail — [click it to watch the 30-second Loom](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e).** That's where the actual flow happens: launcher answering "what's John's number?" with Qwen 2.5 0.5B emitting a `<tool_call>` for `search_contacts`, AAOSP dispatching to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-tripping back through the LLM, and the answer rendering in the chat UI. Verified live on Cuttlefish, 2026-04-12.
+> ▶️ **The thumbnail above looks blank — that's a Loom timing quirk, the actual demo is further into the video.** [Click through to watch the full 30-second flow on Loom](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e). What you'll see: launcher answering "what's John's number?" with Qwen 2.5 0.5B emitting a `<tool_call>` for `search_contacts`, AAOSP dispatching to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-tripping back through the LLM, and the answer rendering in the chat UI. Verified live on Cuttlefish, 2026-04-12. *(A better-framed recording is in the works.)*
 
 > **⭐ If the demo above made you nod, [star the repo](https://github.com/rufolangus/AAOSP).** It's the cheapest way to signal which AOSP forks are worth tracking and helps the right contributors find this.
 
