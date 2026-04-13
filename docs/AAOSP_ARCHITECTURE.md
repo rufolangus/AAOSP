@@ -12,7 +12,9 @@ When in doubt about *what AAOSP is*, read the README. When in doubt about
 
 ## Demo
 
-[Launcher answering "what's John's number?"](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e) — verified end-to-end on Cuttlefish 2026-04-12.
+[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-with-play.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+
+*Launcher answering "what's John's number?" — verified end-to-end on Cuttlefish 2026-04-12.*
 
 ## Component map (inside `system_server`)
 
@@ -95,6 +97,38 @@ These took multiple debugging cycles. Recording them so we (and contributors) do
 11. **`launch_cvd` wipes `/data`** — lib + model push must come *after* the final `launch_cvd`, not before any subsequent one. Otherwise the new boot crash-loops on `UnsatisfiedLinkError` in `loadModel()` and RescueParty stalls boot.
 12. **Soong incremental cache serves stale `framework.jar` / `framework-res.apk`** — even after source edits. Symptom: identical md5 across rebuilds despite confirmed source changes. Workaround: `rm -rf out/soong/.intermediates/<module>` then rebuild.
 13. **`adb install -r -d` of a system app creates a `/data/app/` override** that supersedes `/system_ext/priv-app/`. Sideloaded APKs are signed with the dev/debug key, so any `<service>` gated by a signature-protected permission silently fails to register. Use `make` + relaunch instead of sideloading for system-app testing; `adb uninstall <pkg>` reverts to the system version.
+
+## Adding a new MCP-providing app to the AAOSP build
+
+The README's *How Apps Become Agentic* explains the app-developer contract
+(manifest + `IMcpToolProvider`). This section is the **platform-integrator**
+view: how to get a new MCP-providing app into the actual image so it ships on
+boot and `discoverMcpServices()` can find it.
+
+1. **Drop the app source under `packages/apps/YourMcpApp/`** with an
+   `Android.bp` that sets `privileged: true`, `system_ext_specific: true`,
+   `platform_apis: true`, and `certificate: "platform"`. See
+   `packages/apps/ContactsMcp/Android.bp` as the reference.
+2. **Add the package to `PRODUCT_PACKAGES`** in the umbrella's
+   `build/make/target/product/handheld_system_ext.mk`:
+   ```make
+   PRODUCT_PACKAGES += YourMcpApp
+   ```
+3. **If your app needs runtime permissions** (e.g. `READ_CONTACTS` for a
+   contacts-style tool), grant them via `default-permissions-aaosp.xml` in
+   `/system_ext/etc/default-permissions/` so the user doesn't see a
+   permission prompt on first tool call. (This file doesn't exist yet in
+   v0.1.0 — listed in README's Contributing section as open work.)
+4. **On next boot**, `LlmManagerService.discoverMcpServices()` picks up the
+   new `<mcp-server>` at `PHASE_BOOT_COMPLETED` and registers its tools in
+   `McpRegistry`. Verify with:
+   ```bash
+   adb shell logcat -d -s LlmManagerService | grep 'discovery complete'
+   # → MCP discovery complete: N package(s), M tool(s)
+   ```
+
+No framework rebuild needed for subsequent MCP app additions — only a new
+system image with the app included.
 
 ## Current wire-up status (what's live vs. designed)
 
