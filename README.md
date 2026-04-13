@@ -65,83 +65,133 @@ This isn't adding AI to Android. This is Android adapting to the world that alre
 
 ## How Apps Become Agentic
 
-Any app can become an MCP server. Add a declaration to your manifest, implement one AIDL interface, and the LLM can use your app's capabilities.
+Any app can become an MCP server. Add two blocks to your manifest, implement one AIDL interface, done. Full working reference: **[packages/apps/ContactsMcp](https://github.com/rufolangus/platform_packages_apps_ContactsMcp)**.
 
 ### 1. Declare tools in your manifest
 
+You need **both** an Android `<service>` (the binder endpoint the OS binds to) **and** an `<mcp-server>` (the metadata the registry parses). The example below is lifted verbatim from the reference `ContactsMcp` app.
+
 ```xml
-<application>
-    <mcp-server
-        android:name=".MyMcpService"
-        android:description="Messaging capabilities"
-        android:permission="android.permission.BIND_LLM_MCP_SERVICE"
-        android:mcpVersion="2024-11-05">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.android.contacts.mcp"
+    android:versionCode="102"
+    android:versionName="1.0.2">
 
-        <tool
-            android:name="send_message"
-            android:description="Send a message to a contact"
-            android:mcpRequiresConfirmation="true">
-            <input android:name="recipient"
-                   android:mcpType="string"
-                   android:mcpRequired="true"
-                   android:description="Contact name or number" />
-            <input android:name="body"
-                   android:mcpType="string"
-                   android:mcpRequired="true"
-                   android:description="Message content" />
-        </tool>
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
-        <resource
-            android:name="recent_messages"
-            android:mcpUri="content://com.example/messages/recent"
-            android:description="Recent messages"
-            android:mcpMimeType="application/json" />
-    </mcp-server>
-</application>
+    <application android:label="@string/app_name">
+
+        <service
+            android:name=".ContactsMcpService"
+            android:permission="android.permission.BIND_LLM_MCP_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.llm.MCP_SERVICE" />
+            </intent-filter>
+        </service>
+
+        <mcp-server
+            android:name=".ContactsMcpService"
+            android:description="@string/mcp_description"
+            android:permission="android.permission.BIND_LLM_MCP_SERVICE">
+
+            <tool android:name="search_contacts"
+                  android:description="@string/tool_search_desc">
+                <input android:name="query"
+                       android:description="@string/input_query_desc" />
+            </tool>
+
+            <tool android:name="get_contact"
+                  android:description="@string/tool_get_desc">
+                <input android:name="name"
+                       android:description="@string/input_name_desc" />
+            </tool>
+
+            <tool android:name="list_favorites"
+                  android:description="@string/tool_favorites_desc" />
+
+        </mcp-server>
+
+    </application>
+</manifest>
 ```
+
+> **Gotcha (Android 15):** the `<intent-filter>` on the `<service>` is **required**, even if your service is only bound by component name. PMS silently drops `<service>` declarations without one. Use any no-op action — `android.llm.MCP_SERVICE` is the convention.
+
+`<mcp-server>` attributes read by the parser today: `android:name`, `android:description`, `android:permission`. Aspirational attributes present in the schema but not yet wired into the runtime: `android:mcpVersion`, `android:mcpRequiresConfirmation`, per-input `android:mcpType` / `android:mcpRequired`, `<resource android:mcpUri=… android:mcpMimeType=…>`.
 
 ### 2. Implement the AIDL interface
 
 ```java
-public class MyMcpService extends Service {
-    private final IMcpToolProvider.Stub mBinder =
-            new IMcpToolProvider.Stub() {
+package com.android.contacts.mcp;
+
+import android.app.Service;
+import android.content.Intent;
+import android.llm.IMcpToolProvider;
+import android.os.IBinder;
+import org.json.JSONObject;
+
+public class ContactsMcpService extends Service {
+
+    private final IMcpToolProvider.Stub mBinder = new IMcpToolProvider.Stub() {
         @Override
-        public String invokeTool(String toolName, String argsJson) {
-            JSONObject args = new JSONObject(argsJson);
-            switch (toolName) {
-                case "send_message":
-                    String to = args.getString("recipient");
-                    String body = args.getString("body");
-                    // ... send the message ...
-                    return "{\"status\": \"sent\"}";
-                default:
-                    return "{\"error\": \"unknown tool\"}";
+        public String invokeTool(String toolName, String argumentsJson) {
+            try {
+                JSONObject args = new JSONObject(argumentsJson);
+                switch (toolName) {
+                    case "search_contacts":
+                        return searchContacts(args.optString("query"));
+                    case "get_contact":
+                        return getContact(args.optString("name"));
+                    case "list_favorites":
+                        return listFavorites();
+                    default:
+                        return "{\"error\":\"unknown tool: " + toolName + "\"}";
+                }
+            } catch (Exception e) {
+                return "{\"error\":\"" + e.getMessage() + "\"}";
             }
         }
 
         @Override
-        public String readResource(String name) { /* ... */ }
+        public String readResource(String resourceName) {
+            return "{}"; // not used in this app
+        }
 
         @Override
-        public String listResources(String pattern) { /* ... */ }
+        public String listResources(String uriPattern) {
+            return "[]"; // not used in this app
+        }
     };
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return mBinder;
-    }
+    public IBinder onBind(Intent intent) { return mBinder; }
+
+    // searchContacts, getContact, listFavorites each return a JSON string.
+    // See ContactsMcpService.java for the ContactsContract queries.
+}
+```
+
+`IMcpToolProvider` lives at `frameworks/base/core/java/android/llm/IMcpToolProvider.aidl` — three methods, all returning `String` (JSON payload is the contract):
+
+```aidl
+interface IMcpToolProvider {
+    String invokeTool(String toolName, String argumentsJson);
+    String readResource(String resourceName);
+    String listResources(String uriPattern);
 }
 ```
 
 ### 3. That's it
 
-The OS handles everything else:
-- **Discovery**: PackageManager indexes your tools at install time
-- **Routing**: The LLM decides when to call your tool based on user intent
-- **Execution**: The system service binds to your service via Binder and invokes the tool
-- **Safety**: `mcpRequiresConfirmation="true"` gates destructive actions behind user approval
-- **Reliability**: The system tracks success rates and deprioritizes unreliable tools
+The OS handles everything else (status of each piece as of `v0.1.0`):
+
+- **Discovery** ✅ — `LlmManagerService.discoverMcpServices()` runs at `PHASE_BOOT_COMPLETED`, reads every installed app's manifest, and registers `<mcp-server>` entries into `McpRegistry`.
+- **Prompt injection** ✅ — every registered tool is serialized into Qwen's `<tools>…</tools>` chat template block on each inference call.
+- **Routing** ✅ — when the LLM emits `<tool_call>{"name":…,"arguments":…}</tool_call>`, the dispatcher looks up the owning package/service from the routing table and binds to it via `IMcpToolProvider`.
+- **Execution** ✅ — binder call to `invokeTool()` with a 10s timeout; the JSON result feeds a second LLM pass for natural-language presentation.
+- **Consent / confirmation / audit** ⚠️ designed in `docs/`, not yet wired. `mcpRequiresConfirmation="true"` will eventually gate destructive tools behind a user prompt.
+- **Reliability stats** ⚠️ scaffolded (`LlmSessionStore`), not yet wired. Future: the system tracks per-tool success rates and deprioritizes unreliable tools.
 
 ## The Model
 
