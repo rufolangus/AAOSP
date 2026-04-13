@@ -32,6 +32,18 @@ Android already has the pieces. Binder IPC is the fastest inter-process communic
 
 This isn't adding AI to Android. This is Android adapting to the world that already exists.
 
+## Who this is for
+
+The interface is shifting from screens to agents. MCP is the rare case where the protocol is winning before any one vendor has captured the new surface. AAOSP is the substrate that lets each constituency stay first-class:
+
+- **OEMs** ship an LLM-ready OS without betting on their own model.
+- **App developers** become reachable by any agent via one manifest block. No SDK.
+- **Enterprise software (Square, Toast, Epic, ServiceNow)** expose tools to on-device agents without routing customer data through a third-party model.
+- **LLM vendors** compete on model quality, not integration surface area.
+- **Users** get one assistant, every app visible to it, data stays local.
+
+> If this matches how you think the next platform shift should go, **[star the repo](https://github.com/rufolangus/AAOSP)** — it's the cheapest way to signal "build more of this."
+
 ## Architecture
 
 ```
