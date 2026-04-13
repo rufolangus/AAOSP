@@ -12,6 +12,8 @@ AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS run
 
 *Above: launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through the LLM, and the answer renders in the chat UI. Verified live on Cuttlefish, 2026-04-12.*
 
+> **⭐ If the demo above made you nod, [star the repo](https://github.com/rufolangus/AAOSP).** It's the cheapest way to signal which AOSP forks are worth tracking and helps the right contributors find this.
+
 ## What This Is
 
 An AOSP fork that adds three things:
@@ -41,8 +43,6 @@ The interface is shifting from screens to agents. MCP is the rare case where the
 - **Enterprise software (Square, Toast, Epic, ServiceNow)** expose tools to on-device agents without routing customer data through a third-party model.
 - **LLM vendors** compete on model quality, not integration surface area.
 - **Users** get one assistant, every app visible to it, data stays local.
-
-> If this matches how you think the next platform shift should go, **[star the repo](https://github.com/rufolangus/AAOSP)** — it's the cheapest way to signal "build more of this."
 
 ## Architecture
 
