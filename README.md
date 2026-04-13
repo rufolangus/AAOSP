@@ -421,12 +421,11 @@ m -j$(nproc)
 
 ```bash
 launch_cvd
-
-# Push the model to the virtual device
-adb shell mkdir -p /data/local/llm
-adb push out/target/product/vsoc_x86_64/data/local/llm/*.gguf /data/local/llm/
-adb shell restorecon -R /data/local/llm/
 ```
+
+That's it. As of `v0.2.0` the JNI library and the Qwen GGUF are baked into the system image (`/system/lib64/libllm_jni.so`, `/product/etc/llm/qwen2.5-0.5b-instruct-q8_0.gguf`), so the LLM is live on first boot with no `adb push` step.
+
+> If your first `launch_cvd` drops into recovery with `set_policy_failed:/data/local`, that's a known Cuttlefish first-boot quirk, not AAOSP. Pick **Wipe data / factory reset** from the recovery menu, reboot once, and you'll land in a working Android. The next launches on the same instance behave normally.
 
 ## Status
 
@@ -448,6 +447,7 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 | SELinux `llm` service_contexts | ✅ Live |
 | Privapp permission allowlist for `SUBMIT_LLM_REQUEST` | ✅ Live |
 | Tool-call loop: prompt injection → Qwen `<tool_call>` → dispatch to `IMcpToolProvider.invokeTool()` → humanized result | ✅ Verified end-to-end with Qwen 2.5 0.5B + ContactsMcp |
+| **`/system` bake-in (`v0.2.0`)**: `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm` | ✅ First boot is fully functional; no `adb push` step |
 
 Designed and implemented but **not yet wired/verified**:
 
@@ -476,7 +476,7 @@ contributions right now:
 - **Tiered model selector**: Auto-pick Qwen 2.5 size (0.5B / 1.5B / 3B / 7B) by `ActivityManager.MemoryInfo.totalMem`.
 - **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed.
 - **Launcher UX**: The server-driven UI schema needs more element types (charts, images, forms).
-- **Bake LLM into the OS**: `libllm_jni.so` and the Qwen GGUF currently live in `/data/local/llm/` and are pushed via `adb` after boot. They should ship on `/system/lib64/` and `/product/etc/llm/` (or a dedicated read-only partition) so the LLM is available on first boot with no setup. Requires Soong install rules for the `.so`, a `PRODUCT_COPY_FILES` for the GGUF, and SELinux contexts for the model directory.
+- ~~**Bake LLM into the OS**~~: ✅ done in `v0.2.0`. `libllm_jni.so` ships in `/system/lib64/`, the Qwen GGUF in `/product/etc/llm/`. First boot is fully functional with no `adb push`.
 - **Repo manifest hardening**: Push `system/sepolicy` and `device/google/cuttlefish` forks (currently blocked on github pack-size limit; needs `git gc` or orphan-branch workaround).
 
 ## License

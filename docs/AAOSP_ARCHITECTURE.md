@@ -76,7 +76,7 @@ These took multiple debugging cycles. Recording them so we (and contributors) do
 
 4. **`BIND_LLM_MCP_SERVICE` was `signature`-only** — privileged system_ext apps can't be platform-signed in a userdebug build; bumped to `signature|privileged`.
 5. **MCP discovery ran before PMS finished scanning** — moved `discoverMcpServices()` from `PHASE_SYSTEM_SERVICES_READY` (500) to `PHASE_BOOT_COMPLETED` (1000).
-6. **`libllm_jni.so` not yet auto-installed to `/system/lib64`** — currently pushed to `/data/local/llm/` post-boot. The `static {}` block in `LlmManagerService` falls back to `System.load("/data/local/llm/…")`. Baking into `/system` is listed in the README's Contributing section.
+6. **`libllm_jni.so` install** (`v0.2.0`) — installed to `/system/lib64` via a Soong rule in `external/llama.cpp/Android.bp` plus `PRODUCT_PACKAGES += libllm_jni` in `aaosp_platform_build`. The Qwen GGUF lands in `/product/etc/llm/` via `PRODUCT_COPY_FILES`. `LlmManagerService.findModel()` searches `/data/local/llm` (dev override) → `/product/etc/llm` (canonical) → `/system/etc/llm` (legacy). The static-block fallback `System.load("/data/local/llm/libllm_jni.so")` is kept for dev builds where the lib hasn't yet been baked; once you have a v0.2.0+ image it's never hit.
 
 ### Android-15 quirks (the most non-obvious)
 
@@ -140,6 +140,7 @@ system image with the app included.
 | Prompt injection (`<tools>` block) | ✅ | Qwen chat template, schema derived from `McpToolInfo` |
 | Tool-call dispatch | ✅ | `maybeExecuteToolCall()` → `IMcpToolProvider.invokeTool()` with 10s timeout |
 | Response humanization | ⚠️ 1-pass | Current `aaosp-v15` HEAD humanizes tool-result JSON via `humanizeToolResult()`. A 2-pass agentic loop (`buildContinuationPrompt()` feeding `<tool_response>` back to the LLM) was prototyped on the cloud VM but is **not yet pushed** to github. |
+| **`/system` bake-in** (`v0.2.0`) | ✅ | `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm`. First boot is fully functional with no `adb push`. |
 | HITL consent / confirmation / audit | ❌ designed only | `mcpRequiresConfirmation` is parsed; UI not wired |
 | Per-tool permission enforcement | ❌ | `McpToolInfo.permission` is parsed but not checked at dispatch time |
 | `LlmSessionStore` (SQLite, tool reliability stats) | ❌ scaffolded | Class exists, no binder integration |
@@ -151,4 +152,4 @@ system image with the app included.
 
 - **[README → How Apps Become Agentic](../README.md#how-apps-become-agentic)** — manifest contract, `IMcpToolProvider` interface, support matrix, and "what's live vs. stored".
 - **[README → Build](../README.md#build)** — `repo init` / `repo sync` / `lunch` / `m -j32` / `launch_cvd`. Canonical build instructions live there; this doc does not duplicate them.
-- **[README → Contributing](../README.md#contributing)** — prioritized open work (bake LLM into `/system`, HITL wiring, tiered model selector, `<mcp-server>` on built-in apps).
+- **[README → Contributing](../README.md#contributing)** — prioritized open work (HITL wiring, tiered model selector, `<mcp-server>` on built-in apps, real-device port).
