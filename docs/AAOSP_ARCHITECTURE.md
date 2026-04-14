@@ -102,13 +102,17 @@ Every tool invocation runs through the same pipeline:
    to SESSION. Signature-hash mismatch (app upgrade) invalidates
    grants on next lookup.
 3. **Android runtime permission** — the MCP service may still lack a
-   dangerous permission it needs to fulfil the tool. It tries to host
-   the system permission dialog itself via a translucent
-   `PermissionRequestActivity`. If Android 15 BAL blocks the activity
-   start, the service returns a structured
-   `{"error":"needs_permission",...}` and the launcher's
-   `PermissionRequiredCard` offers a one-tap fallback to the app's
-   details-settings page.
+   dangerous permission it needs to fulfil the tool. Service returns
+   `{"error":"needs_permission","permission":"<perm>","package":"<pkg>"}`
+   immediately (~5 ms). The framework (`runChain`, v0.5.1)
+   short-circuits the chain on this error so no final answer pass
+   generates prose that replaces the card; the launcher's
+   `PermissionRequiredCard` surfaces as the final chat element with a
+   one-tap fallback to the app's details-settings page. A
+   PendingIntent-proxied variant (launcher requests the permission
+   directly without the user leaving the launcher) is queued for
+   v0.6; `PermissionRequestActivity` stays in the MCP repos as the
+   eventual target of that flow.
 4. **Invoke + audit** — on allow, bind to `IMcpToolProvider`, run
    the tool, fire `STATUS_COMPLETED`, append a row to `audit_calls`
    (args, result, status, consent decision, duration, iter index).
@@ -165,7 +169,7 @@ Two repos are GitHub forks of AOSP (`platform_frameworks_base`, `aaosp_platform_
 | [`aaosp_platform_build`](https://github.com/rufolangus/aaosp_platform_build) | `build/make` | `aaosp` | fork of `aosp-mirror/platform_build` | `target/product/handheld_system_ext.mk`: bakes `libllm_jni.so` into `/system/lib64`, Qwen GGUF into `/product/etc/llm`, `default-permissions-aaosp.xml` into `/system_ext/etc/default-permissions`; `PRODUCT_PACKAGES += AgenticLauncher ContactsMcp CalendarMcp` + privapp xml install |
 | [`platform_external_llamacpp`](https://github.com/rufolangus/platform_external_llamacpp) | `external/llama.cpp` | `main` | **new repo — build-glue only** (not a fork; no llama.cpp sources checked in — `src/` is pulled at build time via `scripts/sync_upstream.sh`, baseline b4547) | `Android.bp` for `libllama` + `libllm_jni` (installs to `/system/lib64`); `jni/llm_jni.cpp`; `scripts/sync_upstream.sh`; `scripts/download_model.sh` |
 | [`platform_packages_apps_AgenticLauncher`](https://github.com/rufolangus/platform_packages_apps_AgenticLauncher) | `packages/apps/AgenticLauncher` | `main` | **new repo** | Compose chat surface; binds `ILlmService`; reads `McpRegistry` via `McpPackageHandler.getRegistry()`; `privapp-permissions-agenticlauncher.xml` allowlists `SUBMIT_LLM_REQUEST`/`QUERY_ALL_PACKAGES`. v0.5: `ConsentPromptCard` (4-button HITL), `PermissionRequiredCard` (app-details fallback), `ChatMessageBubble` + `messages` list (accumulating history), `handleBuiltinLaunchApp` (fuzzy-match + `startActivity` for the framework's `launch_app`), `PendingConsent`/`PendingPermission` UI state, `confirmToolCall` + `endSession` reflection passthrough, session continuity via `activeSessionId` |
-| [`platform_packages_apps_ContactsMcp`](https://github.com/rufolangus/platform_packages_apps_ContactsMcp) | `packages/apps/ContactsMcp` | `main` | **new repo** | First reference MCP provider. v0.5: `add_contact`, `update_contact` write tools (`mcpRequiresConfirmation="true"`), `PermissionRequestActivity` (translucent host for `requestPermissions`), `WRITE_CONTACTS` uses-permission declared but **not** default-granted — first invocation triggers either the in-app permission dialog or the launcher's *Open settings* CTA |
+| [`platform_packages_apps_ContactsMcp`](https://github.com/rufolangus/platform_packages_apps_ContactsMcp) | `packages/apps/ContactsMcp` | `main` | **new repo** | First reference MCP provider. v0.5.1: `add_contact`, `update_contact` write tools (`mcpRequiresConfirmation="true"`); `WRITE_CONTACTS` uses-permission declared but **not** default-granted; missing-perm path returns `needs_permission` JSON in ~5 ms (the framework short-circuits the chain and the launcher's `PermissionRequiredCard` + Open-Settings deep link surfaces). `PermissionRequestActivity` in-tree as v0.6 PendingIntent-proxy target |
 | [`platform_packages_apps_CalendarMcp`](https://github.com/rufolangus/platform_packages_apps_CalendarMcp) | `packages/apps/CalendarMcp` | `main` | **new repo** | Second reference MCP provider, proving multi-MCP + cross-MCP chaining. Tools: `list_events`, `find_free_time`, `create_event` (with `mcpRequiresConfirmation`). Natural-language time parser (`"tomorrow 7pm"`). Same two-layer consent + runtime-perm dance as ContactsMcp. |
 | [`aaosp_system_sepolicy`](https://github.com/rufolangus/aaosp_system_sepolicy) | `system/sepolicy` | `aaosp` | **new repo, orphan-root snapshot** — build VM shallow clone prevented ancestry push | `private/service_contexts` + `prebuilts/api/202404/private/service_contexts`: register `llm` service; `build/soong/service_fuzzer_bindings.go`: `EXCEPTION_NO_FUZZER` for `llm` |
 | [`aaosp_device_google_cuttlefish`](https://github.com/rufolangus/aaosp_device_google_cuttlefish) | `device/google/cuttlefish` | `aaosp` | **new repo, orphan-root snapshot** — same shallow-clone topology | `shared/device.mk` + `vsoc_x86_64/phone/aosp_cf.mk`: relaxed artifact path requirements for AAOSP system image boot |

@@ -274,8 +274,8 @@ The OS handles everything else (status of each piece as of `v0.5`):
 - **Discovery** ✅ — `LlmManagerService.discoverMcpServices()` runs at `PHASE_BOOT_COMPLETED`, reads every installed app's manifest, and registers `<mcp-server>` entries into `McpRegistry`.
 - **Prompt injection** ✅ — every registered tool is serialized into Qwen's `<tools>…</tools>` chat template block on each inference call.
 - **Routing** ✅ — when the LLM emits `<tool_call>{"name":…,"arguments":…}</tool_call>`, the dispatcher looks up the owning package/service from the routing table and binds to it via `IMcpToolProvider`.
-- **Execution** ✅ — binder call to `invokeTool()` with a 10s timeout; the JSON result feeds a second LLM pass for natural-language presentation.
-- **Consent / confirmation / audit** ⚠️ designed in `docs/`, not yet wired. `mcpRequiresConfirmation="true"` will eventually gate destructive tools behind a user prompt.
+- **Execution** ✅ — binder call to `invokeTool()` with a 60s timeout (bumped from 10s in v0.5.1 to match `CONSENT_TIMEOUT_MS`); the JSON result feeds a second LLM pass for natural-language presentation, except when the tool returned `"error":"needs_permission"`, in which case the chain short-circuits (v0.5.1) and the launcher's `PermissionRequiredCard` is the final chat element.
+- **Consent / confirmation / audit** ✅ shipped in v0.5 (`HitlConsentStore` + `ConsentGate` + `ConsentPromptCard` + SQLite audit trail). `mcpRequiresConfirmation="true"` on a `<tool>` gates the call behind a 4-button prompt (Once / This chat / Always / Deny); `SCOPE_FOREVER` is silently downgraded to `SESSION` for write-intent tools.
 - **Reliability stats** ⚠️ scaffolded (`LlmSessionStore`), not yet wired. Future: the system tracks per-tool success rates and deprioritizes unreliable tools.
 
 ## The Model
@@ -464,15 +464,23 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 | **System prompt rewrite (`v0.3.0`)**: privacy posture + GROUNDING rule + query-normalization examples + few-shot | ✅ No more name/number hallucination; "John's number" no longer queries `Johns` |
 | **Inference temperature split (`v0.3.0`)**: tool-call pass `temp=0.1`, answer pass caller-controlled | ✅ Deterministic `<tool_call>` JSON; light creativity allowed in the answer phase |
 
-Designed and implemented but **not yet wired/verified**:
+Shipped in v0.5.1:
 
 | Component | Status |
 |---|---|
-| Human-in-the-loop UI (consent / confirmation / don't-ask-again / audit) | **Shipped in v0.5** — `HitlConsentStore`, `ConsentGate`, `ConsentPromptCard` + audit log wired into `LlmManagerService`. End-to-end verification on Cuttlefish pending a fresh demo recording |
+| Human-in-the-loop UI (consent / confirmation / don't-ask-again / audit) | **Shipped in v0.5**, wired end-to-end in v0.5.1 (BAL fix + latch bump + `needs_permission` short-circuit). Verified on Cuttlefish with `add_contact` / `update_contact` / `create_event` |
 | Session AIDL methods on `ILlmService` (`confirmToolCall`, `revokeToolGrant`, `getRecentAuditCalls`, `endSession`) | **Shipped in v0.5** |
 | Agentic chaining across multiple MCPs + built-in `launch_app` tool | **Shipped in v0.5** with CalendarMcp as the second reference MCP |
+| `dumpsys llm` prompt-size histogram (system prompt + full ChatML, min/p50/p95/max) | **Shipped in v0.5.1** — live measurement: ~7897 chars ≈ 1975 tokens for system prompt, ~50% of 4096 ctx used on typical turns |
+
+Still deferred to v0.6+ (see [`docs/ROADMAP.md`](docs/ROADMAP.md)):
+
+| Component | Status |
+|---|---|
 | `LlmSessionStore` SQLite persistence + tool reliability stats | Class scaffolded, not yet wired |
 | Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | v0.5 hard-defaults to 3B Q4_K_M; auto-select-by-RAM logic not yet built |
+| PendingIntent-proxied runtime permission grant | v0.5.1 returns `needs_permission` + "Open settings" CTA; chained Allow→grant is v0.6 |
+| Launcher UX (thinking card position, inline tool-call threading, post-tap card persistence, consent-scope transparency) | Surfaced by v0.5.1 testing |
 | Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
 
 For the platform debugging trail (Android-15 quirks, Soong cache gotchas,
@@ -487,7 +495,7 @@ contributions right now:
 
 - **MCP apps**: Add `<mcp-server>` declarations to AOSP built-in apps (Messaging, Calendar, Settings, Clock, Camera)
 - **MCP discovery debugging**: Why is `<service>` dropped during PMS scan when ContactsMcp is platform-signed and BIND_LLM_MCP_SERVICE is `signature|privileged`? See open issue above.
-- **HITL wiring**: The consent / confirmation / audit UI is designed in `docs/` but not yet wired into `LlmManagerService`.
+- ~~**HITL wiring**: The consent / confirmation / audit UI is designed in `docs/` but not yet wired into `LlmManagerService`.~~ ✅ done in v0.5 and refined in v0.5.1. The remaining polish is in ROADMAP (PendingIntent grant chaining, launcher UX).
 - **Session persistence**: Wire `LlmSessionStore` (SQLite) into the binder API so sessions survive process restart.
 - **Tiered model selector**: Auto-pick Qwen 2.5 size (0.5B / 1.5B / 3B / 7B) by `ActivityManager.MemoryInfo.totalMem`.
 - **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed.

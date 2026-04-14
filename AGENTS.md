@@ -184,7 +184,7 @@ Skip any one, you get either aapt2 errors, API lint failures, or an attr that si
 Meaningful = anything a user or agent reading `docs/CHANGELOG.md` would want to know: new/changed AIDL, new tool, new MCP app, behavior change, bug fix that alters observable output, model/version swap, new required permission, perf regression/win. Typo and pure comment edits are not meaningful.
 
 - `docs/CHANGELOG.md` has (or should have — add it if missing) an `## Unreleased` section at the top. Write the entry there in the same commit that lands the change. Don't defer to "I'll update the CHANGELOG at tag time" — that's how drift happens.
-- Entry format: one bullet per change, reference the code symbol/file, say *why* in half a sentence. Example: `- \`LlmManagerService.invokeMcpTool\` binder wait 10s → 35s so the MCP's 30s permission gate wins (known issue from v0.5).`
+- Entry format: one bullet per change, reference the code symbol/file, say *why* in half a sentence. Example (real v0.5.1 change): `- \`LlmManagerService.invokeMcpTool\` binder wait 10s → 60s so the dispatcher matches \`CONSENT_TIMEOUT_MS\` and legitimately slow tools aren't cut off before they can respond.`
 - When tagging a release, the `## Unreleased` block gets renamed to `## vX.Y — <title> (<YYYY-MM-DD>)` and a fresh empty `## Unreleased` section is added. See §6.5.
 - If you're about to write "(updating the CHANGELOG is out of scope for this commit)," stop. It isn't.
 
