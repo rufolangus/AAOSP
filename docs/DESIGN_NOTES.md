@@ -246,7 +246,7 @@ examples or brittle, unpark and build as above.
 
 Triggered by: study of Claude Code agent orchestration patterns (see
 [`CHANGELOG.md`](./CHANGELOG.md) for the pattern-report synthesis). Core
-problem: the 2048-token context window + 3B model can't reliably sustain
+problem: the 4096-token runtime context + 3B model can't reliably sustain
 a multi-phase task (forage → plan → execute → verify) in a single
 session. The parent's reasoning drifts as intermediate tool outputs
 accumulate.

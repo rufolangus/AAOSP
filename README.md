@@ -446,7 +446,7 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 |---|---|
 | AOSP build pipeline (`m -j32` → `system.img` → `launch_cvd`) | ✅ Boots |
 | `libllm_jni.so` (llama.cpp b4547, x86_64 silvermont) | ✅ Loads in `system_server` |
-| Qwen 2.5 0.5B GGUF model load (ctx=2048, vocab=151936) | ✅ Loads |
+| Qwen 2.5 3B Q4_K_M GGUF model load (ctx=4096, vocab=151936) | ✅ Loads |
 | `LlmManagerService` binder API (`service llm: found`) | ✅ Live |
 | MCP manifest schema (aapt2 whitelist for `<mcp-server>`/`<tool>`/`<input>`/`<resource>`) | ✅ Compiles |
 | `ParsingPackageUtils` patch — skip `<mcp-server>` subtree cleanly | ✅ Live |

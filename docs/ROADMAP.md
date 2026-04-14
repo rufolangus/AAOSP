@@ -287,11 +287,12 @@ the AIDL. ~30 min of plumbing.
 ### DynamicToolRegistry — lazy-load MCP tool schemas
 
 **Why**: today `LlmManagerService.composeSystemPrompt()` inlines the
-full JSON schema for every registered MCP tool. With v0.5's two MCPs
-+ `launch_app` it's ~N tokens (exact number pending the token-count
-log landing). Adding MessagesMcp / ClockMcp / NotesMcp / CameraMcp —
-the next obvious apps — will blow the 2048-token context before the
-user has typed a word. The pattern used by Claude Code (ENABLE_TOOL_SEARCH):
+full JSON schema for every registered MCP tool. v0.5.1 measurement
+(via `dumpsys llm` prompt-size histogram) confirms the system prompt
+is **~7897 chars ≈ 1975 tokens** — roughly half of the current 4096-
+token runtime context, before the user has typed a word. Adding
+MessagesMcp / ClockMcp / NotesMcp / CameraMcp — the next obvious apps
+— will push past the safe budget fast. The pattern used by Claude Code (ENABLE_TOOL_SEARCH):
 ship a catalog (`{package, tool, oneLineDescription}` tuples) and a
 built-in `search_tools(keyword_or_category)` tool; fetch the full
 schema into context only when the model reaches for it.
@@ -305,9 +306,9 @@ cached in-session to avoid double-fetch on repeated use.
 **Trade-off**: one extra inference turn on first use of any tool.
 Acceptable; avoids a hard ceiling on ecosystem growth.
 
-**Depends on**: nothing directly. Gating: probably only worth the
-plumbing once we have evidence a 4th MCP would push us past 2048 —
-see the token-count log landing in v0.5.1.
+**Depends on**: nothing directly. Gating: v0.5.1 measurement already
+establishes the problem is real at the current 2 MCPs + built-in;
+a 4th MCP is probably where the ceiling actually bites in practice.
 
 ### Inference-based context compaction
 
@@ -315,7 +316,7 @@ see the token-count log landing in v0.5.1.
 until it hits `MAX_CHAIN_ITERATIONS_CAP=8`. Naive truncation drops
 semantic context. Claude Code triggers a summary-inference turn at
 ~80% of context and replaces the older range with a `<summary>` block.
-For AAOSP on a 2048 window, the trigger would fire at ~1500 tokens.
+For AAOSP on the current 4096-token runtime context, the trigger would fire at ~3200 tokens.
 
 **Design sketch**: `CompactionHook` in `LlmManagerService` checks
 token count before each iteration. At threshold, fire a side
@@ -404,3 +405,86 @@ learn that, which is better than never attempting.
 
 **Depends on**: nothing structurally. Launcher-only change; can
 land independently. Good v0.6 candidate.
+
+### Launcher UX: thinking card at bottom of conversation, not top
+
+**Why**: v0.5.1 test feedback. Current launcher places the thinking
+indicator at the top of the chat view while the model is generating.
+The convention (all mainstream chat UIs) is new content arrives at
+the bottom, pushing old content up as you scroll. Top-anchored
+thinking breaks scroll expectations and makes the card disconnected
+from the user's latest turn.
+
+**Fix**: render thinking / tool-call indicators inline at the end of
+the message list, as ephemeral trailing items that get replaced when
+the final response arrives. Launcher-only change in
+`AgenticHome.kt` / `ChatMessageBubble`. No framework or AIDL work.
+
+### Launcher UX: tool-call indicators threaded chronologically inline
+
+**Why**: same v0.5.1 testing session. Tool-call badges currently
+render separately from the conversation turns that triggered them.
+To follow the agent's reasoning, the user has to mentally interleave
+tool-call blocks with text turns. Inline threading — tool call as a
+child of the turn that produced it — makes the agent's intermediate
+steps legible.
+
+**Fix**: `ConversationMessage` gains a `toolCallsForThisTurn: List<...>`
+field; `ChatMessageBubble` renders them inline under the model's
+turn. Requires re-association in `LauncherViewModel` — currently
+tool calls flow on a separate callback path from message content.
+Moderate refactor, launcher-only.
+
+### Consent scope downgrade transparency
+
+**Why**: HitlConsentStore correctly downgrades `SCOPE_FOREVER` to
+`SCOPE_SESSION` for write-intent tools (observed in v0.5.1 test
+logs: `Downgrading FOREVER→SESSION for write-intent tool add_contact`).
+The system did the right thing — users shouldn't be able to grant
+"always" on destructive operations by accident. But the UI never
+told the user their choice was silently modified. Next session the
+consent card will re-appear, and the user's model of "I chose Always"
+breaks. Trust-surprise.
+
+**Fix, minimum**: on write-intent tools (`mcpRequiresConfirmation=true`),
+grey out the "Always" option in `ConsentPromptCard` so the downgrade
+never happens silently; users see the constraint up front. Optional
+tooltip: "Always isn't available for write tools — they re-ask each
+session."
+
+**Fix, alternative**: keep "Always" clickable but explicitly label it
+"Always (this chat)" for write tools. Same transparency, slightly
+looser UX — user can still feel they chose the maximum grant
+available.
+
+### `Context.bindService` qualified-user warning in dispatcher
+
+**Why**: v0.5.1 logcat shows
+```
+Calling a method in the system process without a qualified user:
+  ... invokeMcpTool ... runChain
+```
+Cosmetic on single-user Cuttlefish; latent bug for multi-user /
+work-profile setups, where the dispatcher would bind the MCP
+service in the wrong user's context. `mContext.bindService(...)`
+should be `mContext.createContextAsUser(userHandle, 0).bindService(...)`
+with `userHandle` derived from the submitting UID (already available
+as `userId` in `dispatchOneTool`).
+
+**Depends on**: nothing. One-liner API change + tests. Good v0.7
+multi-user hardening item; skip until there's a work-profile story.
+
+### Retry affordance when agent refuses from history
+
+**Why**: counterpart to the "strip stale `needs_permission` from
+conversation history" entry above. That fix tries to prevent the
+model from seeing its own prior failure; this one adds a user-facing
+fallback for when the fix misses. If the launcher detects the model
+emitted prose about `needs_permission` without firing a tool call
+(detectable via the absence of an `onToolCall` callback within the
+chain), render a small "Try again" button that starts a fresh
+session with stripped history.
+
+**Depends on**: the stripping fix above should land first. This is
+defense in depth — even if stripping misses a case, the user has an
+out other than knowing to manually start a new chat.
