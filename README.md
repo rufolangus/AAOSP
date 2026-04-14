@@ -368,8 +368,8 @@ The flow: **check consent -> prompt if needed -> check confirmation -> prompt or
 | **[platform_packages_apps_CalendarMcp](https://github.com/rufolangus/platform_packages_apps_CalendarMcp)** | Second reference MCP (`list_events`, `find_free_time`, `create_event`) — proves multi-MCP + cross-MCP chaining | `main` |
 | **[platform_external_llamacpp](https://github.com/rufolangus/platform_external_llamacpp)** | llama.cpp Android.bp, `libllm_jni.so` JNI bridge | `main` |
 | **[aaosp_platform_build](https://github.com/rufolangus/aaosp_platform_build)** | `PRODUCT_PACKAGES` + privapp xml install for system_ext | `aaosp` |
-| **[aaosp_system_sepolicy](https://github.com/rufolangus/aaosp_system_sepolicy)** | `llm` service_contexts + fuzzer exception — **new repo, empty on GitHub**; patches live on the build VM, push blocked by pack-size limit | (none yet) |
-| **[aaosp_device_google_cuttlefish](https://github.com/rufolangus/aaosp_device_google_cuttlefish)** | Cuttlefish bring-up tweaks — **new repo, empty on GitHub**; same pack-size block | (none yet) |
+| **[aaosp_system_sepolicy](https://github.com/rufolangus/aaosp_system_sepolicy)** | `llm` service_contexts + fuzzer exception — orphan-root snapshot (see `AAOSP_OVERLAY.md` in the repo) | `aaosp` |
+| **[aaosp_device_google_cuttlefish](https://github.com/rufolangus/aaosp_device_google_cuttlefish)** | Cuttlefish artifact-path relaxations — orphan-root snapshot | `aaosp` |
 
 For the deep technical view (file-by-file changes, build pitfalls, debugging
 gotchas, current state of bring-up), see **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**.
@@ -493,7 +493,7 @@ contributions right now:
 - **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed.
 - **Launcher UX**: The server-driven UI schema needs more element types (charts, images, forms).
 - ~~**Bake LLM into the OS**~~: ✅ done in the `/system` bake-in milestone (commit `42af2cf`, shipped in v0.5). `libllm_jni.so` ships in `/system/lib64/`, the Qwen GGUF in `/product/etc/llm/`. First boot is fully functional with no `adb push`.
-- **Push sepolicy and cuttlefish repos**: `aaosp_system_sepolicy` and `aaosp_device_google_cuttlefish` exist on GitHub but are empty shells — patches live on the build VM and the push has been blocked by GitHub's pack-size limit. Needs `git gc --aggressive` or an orphan-branch snapshot push.
+- ~~**Push sepolicy and cuttlefish repos**~~: ✅ done 2026-04-14 via orphan-root snapshot. `aaosp_system_sepolicy` and `aaosp_device_google_cuttlefish` now on GitHub with `aaosp` as default branch. The repo-manifest shallow clone prevented an ancestry-preserving push; the overlays are 3 and 2 lines respectively, so a single-commit snapshot is the smallest honest artifact. Each repo's `AAOSP_OVERLAY.md` documents the base AOSP commit + the exact delta.
 
 ## License
 

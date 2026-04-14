@@ -21,7 +21,7 @@ Canonical source of truth: **`docs/AAOSP_ARCHITECTURE.md`**. If this file and th
 
 ## 2. Repo topology
 
-Nine repos make up AAOSP. **Only two are actual GitHub forks.** The rest are new repos sitting at AOSP tree paths, or build-glue wrappers, or empty shells. Do not assume "fork" from the name.
+Nine repos make up AAOSP. **Only two are actual GitHub forks.** The rest are new repos sitting at AOSP tree paths — one build-glue wrapper, two orphan-root snapshots (repo-manifest shallow clones can't push ancestry), and four plain new repos. Do not assume "fork" from the name.
 
 | Repo | AOSP path | Branch | What it actually is |
 |---|---|---|---|
@@ -32,8 +32,8 @@ Nine repos make up AAOSP. **Only two are actual GitHub forks.** The rest are new
 | `rufolangus/platform_packages_apps_AgenticLauncher` | `packages/apps/AgenticLauncher` | `main` | New repo |
 | `rufolangus/platform_packages_apps_ContactsMcp` | `packages/apps/ContactsMcp` | `main` | New repo |
 | `rufolangus/platform_packages_apps_CalendarMcp` | `packages/apps/CalendarMcp` | `main` | New repo (added in v0.5) |
-| `rufolangus/aaosp_system_sepolicy` | `system/sepolicy` | (none yet) | **Empty shell on GitHub** — patches live only on the build VM; push blocked on GitHub pack-size limit |
-| `rufolangus/aaosp_device_google_cuttlefish` | `device/google/cuttlefish` | (none yet) | **Empty shell on GitHub** — same block |
+| `rufolangus/aaosp_system_sepolicy` | `system/sepolicy` | `aaosp` | **Orphan-root snapshot.** 3-line AAOSP overlay (service_contexts + fuzzer exception). `AAOSP_OVERLAY.md` in the repo documents the base + delta. No ancestry on GitHub — diff against AOSP `android-15.0.0_r1` locally |
+| `rufolangus/aaosp_device_google_cuttlefish` | `device/google/cuttlefish` | `aaosp` | **Orphan-root snapshot.** 2-line AAOSP overlay (artifact-path relaxations). Same snapshot topology |
 
 ### Which repo for which change
 
@@ -56,7 +56,7 @@ gh api repos/rufolangus/<name> --jq '{fork, parent: (.parent.full_name // "—")
 gh api repos/rufolangus/<name>/branches --jq '.[].name'
 ```
 
-If `fork: false`, it is not a fork. If `size: 0` and branches is empty, it is an empty shell.
+If `fork: false`, it is not a fork. If `size: 0` and branches is empty, it is an empty shell. If there's exactly one commit with no parent, it is an orphan-root snapshot (check `AAOSP_OVERLAY.md` for what the overlay actually is).
 
 ---
 
