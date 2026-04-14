@@ -10,18 +10,151 @@ Dates are when the change was merged to the default branch of the affected repo,
 
 ## Unreleased
 
-Post-v0.5 changes landed on `main` / default branches across the AAOSP repos. Will graduate to a `v0.5.1` section when tagged.
+_(nothing yet — v0.5.1 just tagged)_
 
-- **`AAOSP` (umbrella) `2aaa97c`** — docs: truth pass. Fixed fabricated CHANGELOG dates (v0.3 was `2026-03-22`, actual tagger date is `2026-04-14`; v0.2 was `2026-02-18`, impossibly before v0.1 — reality is the untagged `42af2cf` milestone on `2026-04-13`). Rewrote `docs/AAOSP_ARCHITECTURE.md` repo inventory: only `platform_frameworks_base` + `aaosp_platform_build` are real GitHub forks; `platform_external_llamacpp` is build-glue only (no llama.cpp source checked in — pulled at build time by `scripts/sync_upstream.sh`); `AgenticLauncher`/`ContactsMcp`/`CalendarMcp`/`sepolicy`/`cuttlefish` are new repos, not forks and not in-tree. Removed unverified Snapdragon 8 Gen 3 benchmark from README (no physical target exists; contradicted ROADMAP's Cuttlefish numbers). Replaced phantom `v0.2.0` tag references with real sha `42af2cf` shipped in v0.5. Bake-in path was the 0.5B filename; v0.5 swapped to 3B Q4_K_M. Moved HITL / session AIDL / chaining / `launch_app` from "not yet wired" to "shipped in v0.5" in the status table.
-- **`platform_packages_apps_ContactsMcp` `df27b4b`** — README: fix dangling `./CalendarMcp_README.md` link; CalendarMcp lives in its own repo, not as a local file.
-- **`platform_frameworks_base` `399b323`** — `ILlmService.aidl`: drop stale forward-reference in `revokeToolGrant` javadoc ("forthcoming v0.5" / "v0.4 exposes it via `cmd llm revoke`") — the AIDL now ships on `aaosp-v15`.
-- **`AAOSP` (umbrella) `dd129f7`** — add `AGENTS.md` at repo root encoding the expensive-to-rediscover rules (repo topology, don't-fabricate rules, docs-track-code-live principle, multi-file touch recipes, AOSP landmines, pre-commit gate). Bootstrap this `## Unreleased` section so future changes have a place to land.
-- **`AAOSP` (umbrella) `b747553`** — docs: study + synthesis of Claude Code agent orchestration patterns (from a commissioned deep-research report on the public `anthropics/claude-code` repo + Claude Agent SDK docs). Three parked designs added to `docs/DESIGN_NOTES.md`: **sub-agent orchestration for AAOSP** (role-isolated sessions within the same llama.cpp instance, blocked on a 3B-behavioral bench experiment); **user-facing persona memory** (MEMORY.md-style pointer index, blocked on a privacy threat model); **task tracking as user-visible notification surface** (TaskCreate/TaskUpdate with single-in-progress invariant, depends on `LlmSessionStore` wire-up + sub-agent decision). Three new `docs/ROADMAP.md` entries under platform hardening: **`DynamicToolRegistry`** (lazy-load MCP tool schemas via `search_tools` built-in, for scaling past ~4 MCPs); **inference-based context compaction** (summary turn at ~80% ctx; depends on `LlmSessionStore`); **launcher-side tool-result clearing** (strip stale `tool_result.content` from `conversationJson`; gated on evidence we hit ceilings).
-- **`aaosp_system_sepolicy` `c13cc1b`** + **`aaosp_device_google_cuttlefish` `4c4c626`** — initial orphan-root snapshot push. Closes the v0.1.0 reproducibility gap: these repos existed on GitHub as empty shells for 2 days while the overlays (3 files + 2 files respectively) sat only on the build VM. Root cause of the prior "blocked on pack-size" framing: the build VM's `repo sync` creates shallow clones, and GitHub rejects pushes whose commits reference parent objects the remote can't verify. Not a pack-size issue at all; the packs are ~3 MiB each. Orphan-root snapshot sidesteps the shallow-ancestry problem — each repo now hosts a single parentless commit containing the full working tree + an `AAOSP_OVERLAY.md` explaining the AOSP base commit + the exact delta. Default branch set to `aaosp`. The original non-orphan `aaosp` branches remain on the build VM for local `repo` compatibility.
-- **`AAOSP` (umbrella) `d137600`** — umbrella docs synced to reflect the sepolicy + cuttlefish state change (no longer "empty shells / push blocked"). README repo table, AGENTS.md §2 topology table + verification-command guidance, ARCHITECTURE repo inventory + intro, and the Contributing "push sepolicy and cuttlefish" bullet all updated. Per AGENTS.md §4 (docs-track-code-live): these doc updates land in the same conceptual commit as the push.
-- **`AAOSP` (umbrella) `907704f`** — ROADMAP addition: **strip stale `needs_permission` tool results from conversation history**. Finding from the v0.5.1 live test session: after a write-tool hits `needs_permission` in turn N, the model reads its own prior failure from `conversationJson` in turn N+1 and refuses to even attempt the tool — emits prose "you need the permission" without a `<tool_call>`. Reproduced cleanly: a fresh chat (after `endSession`) with the *same* prompt and *same* permission state produces a tool call and succeeds. The state the user cares about (grant/revoke) lives outside the chat; the model's history-driven caution can't see it change. ROADMAP entry proposes launcher-side filter in `conversationJson` construction. v0.6 candidate.
-- **`AAOSP` (umbrella) `ccf30c5`** — docs: (a) correct stale `ctx=2048` references to `ctx=4096` (README status table, DESIGN_NOTES sub-agent entry, ROADMAP DynamicToolRegistry + compaction entries); `nativeLoadModel` has shipped with `ctx=4096` since the v0.5 3B swap, and v0.5.1 `dumpsys llm` directly observes this — the docs were out of sync. (b) Four new ROADMAP entries from v0.5.1 test observations: **thinking card at bottom of conversation, not top** (UX convention); **tool-call indicators threaded inline with their turn** (legibility); **consent scope downgrade transparency** (grey out `SCOPE_FOREVER` for write-intent tools in `ConsentPromptCard` so the silent downgrade to `SESSION` stops surprising users); **`Context.bindService` qualified-user warning** (latent multi-user bug, v0.7 hardening); **retry affordance when agent refuses from history** (UI fallback for the stripping fix above). Also refactored the `DynamicToolRegistry` ROADMAP entry with the real measured system-prompt size (~7897 chars ≈ 1975 tokens, ~50% of the 4096-token budget) from v0.5.1 dumpsys output.
-- **`AAOSP` (this commit)** — two more ROADMAP items from the final v0.5.1 test re-run: **consent Allow should also grant the runtime Android permission** (today the tool consent and the runtime perm are two independent taps — 5-step user path for what the user said with one "yes"; folded into the existing PendingIntent-proxy work already queued for v0.6) and **card-disappears-after-click leaves empty chat** (PermissionRequiredCard should persist post-tap with a "Try again" affordance instead of dismissing and leaving the chat with nothing below the user's turn). Also records the full sequence of today's v0.5.1 push: framework code + launcher diagnostic + MCP BAL fixes + cuttlefish overlay trim to follow.
+---
+
+## v0.5.1 — HITL wiring fixes; BAL workaround; ctx instrumentation; docs truth pass (2026-04-14)
+
+The "v0.5 we thought we shipped." v0.5 landed all the HITL consent
+*scaffolding* (ConsentGate, HitlConsentStore, ConsentPromptCard,
+`mcpRequiresConfirmation`, runtime-permission dance) but the
+end-to-end write-tool flow was broken in three concrete places. All
+three plus a measurement harness and a negative-example routing
+pass are in v0.5.1.
+
+### Framework — `platform_frameworks_base` `695fe48` (aaosp-v15)
+
+- **`invokeMcpTool` dispatcher latch `10s → 60s`.** Matches
+  `CONSENT_TIMEOUT_MS` so the MCP side gets the full human-response
+  window. In v0.5 the 10s cap fired before legitimate slow tools
+  could respond, masking the MCP-authored error JSON with a generic
+  "tool timeout" upstream.
+- **Negative-example routing in `composeSystemPrompt()`**
+  (`TOOL_ROUTING_RULES`). Steers Qwen 2.5 3B away from pre-trained
+  shell / `adb` / `content://` habits toward the listed MCP tools.
+  Pattern taken from the Claude Code system-prompt study; applies
+  cleanly to the AAOSP context.
+- **Prompt-size instrumentation.** Rolling histogram of system-
+  prompt and full-ChatML character counts (100-sample window),
+  surfaced via `dumpsys llm`. Budget math reads the actual loaded
+  `mNativeModelCtxSize` rather than a hardcoded value. Live
+  measurement: system prompt is `~7897 chars ≈ 1975 tokens` (~50% of
+  the 4096-token runtime context) before the user's first word —
+  evidence-supporting the `DynamicToolRegistry` roadmap item at
+  v0.6.
+- **`runChain` short-circuits on `tool_result` `needs_permission`.**
+  The launcher's `PermissionRequiredCard` (keyed on this JSON) is
+  the correct user-facing element. Running a final answer pass
+  after a `needs_permission` result produces redundant prose
+  ("Please go to Settings...") that replaces the actionable card
+  in the chat, stealing the Open-Settings affordance. Now the
+  chain exits at iter=0 with `onToken("") + onComplete("")`; card
+  stays as the last message. Verified end-to-end on Cuttlefish:
+  previously 2m+ and prose-replaces-card; now 7s and card persists.
+
+### Launcher — `platform_packages_apps_AgenticLauncher` `2ad4940` (main)
+
+- **`LauncherViewModel.submitQuery()` re-polls `isReady()`** if the
+  cached init-time value is false. 3B model mmaps in ~15s on cold
+  boot; opening the launcher during that window previously cached
+  "not ready" forever. Self-correcting now.
+- **`LauncherViewModel.cancel()` diagnostic log** with stack trace
+  for the reported phantom-cancel ~283ms after submit. Across five
+  submits in the v0.5.1 test session the diagnostic stayed silent
+  — the phantom isn't reproducible in current flow, or was
+  mis-attributed to slow 3B inference. Keeping the log as a
+  regression guard; can drop the `Throwable` allocation in v0.5.2
+  if still silent.
+
+### MCPs — `ContactsMcp` `370a6cb` + `CalendarMcp` `f41f3a8` (main)
+
+- **Delete `startActivity(PermissionRequestActivity)` path** in
+  `requestWrite{Contacts,Calendar}OrError`. On Android 15 the BAL
+  (background-activity-launch) gating silently fails the start
+  from a bound-service context; the service then sat on a 30s
+  latch waiting for a dialog that never rendered. Return
+  `needs_permission` JSON in ~5ms instead. `PermissionRequestActivity`
+  stays in-tree as the eventual target of a PendingIntent-proxied
+  permission request via the launcher (v0.6 work).
+
+### `aaosp_device_google_cuttlefish` `90d77d1` (aaosp, orphan re-push)
+
+- **Overlay trimmed 2 → 1 line.** The previous snapshot carried a
+  `PRODUCT_COPY_FILES` line pushing the 0.5B GGUF to
+  `/data/local/llm/` in `shared/device.mk`. That was v0.1.0 legacy
+  (model was side-loaded post-boot); v0.5 bakes the 3B GGUF into
+  `/product/etc/llm/` via `aaosp_platform_build`. The 0.5B-copy
+  line was dead; dropped.
+- **Corrected commit message.** v0.1.0's commit message said
+  "relax artifact path requirements" but the change actually
+  *removes* the `:= relaxed` line. In Android 14+ `:= relaxed` is
+  deprecated — its presence elevates the violation. Removing the
+  line (as the AAOSP commit does) is the correct modern fix.
+  Load-bearing: restoring upstream caused `m -j32` to fail at the
+  Make-setup phase on `system/lib64/libllm_jni.so`. The updated
+  `AAOSP_OVERLAY.md` documents this correctly.
+- **Force-push of the `aaosp` branch** was required to replace the
+  2-line orphan snapshot with the 1-line one.
+
+### `AAOSP` umbrella (`d137600` → `6679f17`)
+
+- **Doc fabrication sweep.** Fixed v0.3 and v0.2 dates in
+  CHANGELOG (were Feb/March, reality is all 2026-04-12 through
+  2026-04-14); removed phantom `v0.2.0` tag references
+  throughout; removed unverifiable Snapdragon 8 Gen 3 benchmark;
+  rewrote repo inventory (only 2 of 9 are real forks); fixed
+  "empty shell / pack-size blocked" framing for sepolicy +
+  cuttlefish repos; aligned `ctx=2048` stale references to the
+  real runtime `ctx=4096`; updated status table (HITL/chaining/
+  launch_app moved from "not yet wired" to "shipped in v0.5").
+- **`AGENTS.md` added at repo root.** Encodes the expensive-to-
+  rediscover rules: repo topology, don't-fabricate guardrails,
+  docs-track-code-live principle, multi-file touch recipes,
+  AOSP landmines, pre-commit gate, session start protocol.
+- **Claude-code patterns synthesis.** Three parked designs in
+  `DESIGN_NOTES` (sub-agent orchestration, user-facing persona
+  memory, task tracking as notification surface) + three new
+  platform-hardening ROADMAP entries (DynamicToolRegistry,
+  inference-based compaction, launcher-side tool-result
+  clearing). Patterns extracted from a deep-research pass on
+  the public `anthropics/claude-code` repo + Claude Agent SDK
+  docs, mapped to AAOSP's actual constraints (3B / 4096 ctx /
+  on-device / single-model).
+- **Seven UX / hardening ROADMAP items from v0.5.1 live
+  testing**: thinking card position; tool-call inline
+  threading; consent scope-downgrade transparency;
+  `Context.bindService` qualified-user multi-user bug;
+  strip-needs_permission-from-history; retry-after-refuse
+  affordance; consent-Allow-chains-to-runtime-permission;
+  card-disappears-after-click-leaves-empty-chat.
+- **`aaosp_system_sepolicy` `c13cc1b` + `aaosp_device_google_cuttlefish`
+  `4c4c626` (superseded by `90d77d1`)** — initial orphan-root
+  snapshot pushes, closing the v0.1.0 reproducibility gap. These
+  repos had been empty shells on GitHub for 2 days while the
+  overlays (3 files + 2 files, later 1 file) sat only on the
+  build VM. Root cause of the prior "pack-size blocked" framing:
+  `repo sync` shallow-clone topology; fix was orphan-root
+  snapshots. Each hosts an `AAOSP_OVERLAY.md` documenting base
+  commit + delta.
+- **`platform_packages_apps_ContactsMcp` `df27b4b`** — fix
+  dangling `./CalendarMcp_README.md` link (CalendarMcp is a
+  separate repo, not an in-tree file).
+- **`platform_frameworks_base` `399b323`** — drop stale
+  forward-reference in `revokeToolGrant` javadoc ("forthcoming
+  v0.5" / "v0.4 exposes it via `cmd llm revoke`") — AIDL now
+  ships on `aaosp-v15`.
+
+### Still broken after v0.5.1 — deferred to v0.6 (see `ROADMAP.md`)
+
+- Consent `Allow` doesn't chain to the runtime Android permission
+  grant; user still has a 5-step path through Settings.
+- `PermissionRequiredCard` dismisses on tap, leaving empty chat.
+- Thinking card renders at top of conversation instead of bottom.
+- Tool-call indicators aren't threaded inline with their turn.
+- Consent scope downgrade (FOREVER→SESSION for write tools) is
+  silent in the UI.
+- Model-refuses-from-history when a prior turn hit `needs_permission`.
 
 ---
 
