@@ -39,80 +39,59 @@ full answer appears at once. Qwen 3B on Cuttlefish CPU runs ~3–5 tok/s
 directly for the final answer pass. Keep buffering for the tool-call
 pass (need the whole tag before dispatch).
 
-### Two-layer permission flow: route writes to `PermissionRequiredCard` cleanly
+### Two-layer permission flow — PendingIntent-proxied runtime grant via launcher
 
-**Why**: v0.5 ships the scaffolding (translucent
-`PermissionRequestActivity` in each MCP, `requestWriteContactsOrError`
-that falls through to `{"error":"needs_permission"}`), but on Android
-15 the in-app activity path hits background-activity-launch gating
-from a bound-service context — `startActivity` silently returns
-`BAL_BLOCK` without throwing. Service sits on a 30 s latch waiting
-for a dialog that never renders, while the dispatcher's inner 10 s
-binder latch times out first and returns `{"error":"tool timeout"}`
-upstream. The launcher's `PermissionRequiredCard` keys on
-`"needs_permission"` and never fires, so the user sees a red "tool
-failed" card with no path forward.
+**Status as of v0.5.1**: the minimum fix landed. The BAL-blocked
+`startActivity(PermissionRequestActivity)` path is gone from
+`ContactsMcp` + `CalendarMcp` (return `needs_permission` JSON
+immediately); `LlmManagerService.invokeMcpTool` latch bumped 10s →
+60s to match `CONSENT_TIMEOUT_MS`; `runChain` short-circuits on
+`needs_permission` so the launcher's `PermissionRequiredCard` + Open
+Settings affordance becomes the final chat element instead of being
+overwritten by a prose answer turn. Verified end-to-end on
+Cuttlefish.
 
-**Fix, minimum**: in `ContactsMcp.requestWriteContactsOrError` +
-`CalendarMcp.requestWriteCalendarOrError`, stop calling
-`startActivity` entirely. If the MCP doesn't hold the runtime
-permission, return `needsPermissionError()` immediately (~5 ms, not
-30 s). The launcher's existing `PermissionRequiredCard` + app-details
-Settings deep link is already the right UX for this. Keeps
-`PermissionRequestActivity` in the tree as dead code marked TODO.
+**What's still broken (v0.6 scope)**: tapping **Allow** on the
+consent card doesn't chain to granting the Android runtime
+permission. User today has a 5-step path (Allow → Open Settings →
+navigate → toggle → back → re-ask) for what they meant with one
+"yes". Proper fix: MCP returns a `PendingIntent` alongside
+`needs_permission`, the launcher (foreground activity, no BAL
+block) surfaces `ActivityCompat.requestPermissions` or fires the
+pending intent. User sees one dialog, taps Allow, write proceeds.
+`PermissionRequestActivity` stays in-tree as the target of this
+proxy flow; currently marked dead with a `TODO(v0.6)` comment.
 
-**Fix, proper (future)**: bound-service MCP requests a permission via
-`PendingIntent` the launcher can surface — gets around BAL because
-the launcher is a foreground activity. Or: promote to foreground
-service temporarily. Not needed if the "Open settings" fallback is
-good enough.
+Touches: `ContactsMcp` + `CalendarMcp` services (return a
+`PendingIntent` in the error JSON), `AgenticLauncher`
+(`PermissionRequiredCard` wires it and refreshes on result), no
+framework AIDL change.
 
-Also needed at the same time: bump
-`LlmManagerService.invokeMcpTool`'s `latch.await` from 10 s to at
-least 60 s so slow tools (ones legitimately waiting on user
-interaction) don't time out faster than they can respond. Keep 10 s
-as a fast-path for read tools if we add a per-tool declared SLA
-later.
+### Phantom `cancel()` ~283 ms after submit — dormant
 
-### Phantom `cancel()` ~283 ms after submit
+**Status as of v0.5.1**: diagnostic landed
+(`Log.w("AgenticLauncher", "cancel() called", Throwable())` first
+line of `LauncherViewModel.cancel()`). Across five end-to-end
+submits in the v0.5.1 test session the diagnostic **stayed silent**
+— no `cancel()` fired. The phantom isn't reproducible in current
+flow, so either:
+- the original report was misattribution of slow 3B inference
+  (~50–60 s per pass on Cuttlefish CPU) to cancellation, or
+- a prior fix (e.g., the readiness re-poll) closed the lifecycle
+  path that was triggering it.
 
-**Why**: reproducibly observed in v0.5 testing. User taps Send, view
-model submits, something fires `LauncherViewModel.cancel()` 283 ms
-later. Native inference is blocking so it runs to completion, the
-tool call dispatches, but the chain aborts on the iter-1 boundary
-before the final prose turn — user sees a stuck-looking tool-call
-card with no narration.
+**Disposition**: keep the diagnostic log in as a regression guard —
+if it ever fires again we have a stack trace. Can drop the
+`Throwable` allocation in a future patch if still silent after
+wider testing. No active investigation needed.
 
-Suspected source: `ImeTracker` / keyboard hide animation racing with
-a touch target that also maps to the Cancel button. Boot log for the
-test showed `ImeTracker ... onRequestHide` + `FrameTracker ... force
-finish cuj, time out: IME_INSETS_HIDE_ANIMATION` ~60 s later, so
-there's definitely IME lifecycle churn around submits. Either the
-Cancel button is sharing touch territory with Send, or a lifecycle
-event (onPause → onResume on keyboard animation end) is clearing
-session state.
+**If it re-appears**: inspect logcat for `AgenticLauncher:W`
+around submit time, cross-reference with IME / focus events, and
+either gate the Cancel button (if shared touch territory with
+Send) or make `cancel()` a no-op when no session is in flight.
 
-**First investigation step**: add a stack-trace log in
-`LauncherViewModel.cancel()` to see who's calling it. Then either
-gate the button, relocate it, or make `cancel()` no-op if no session
-is in flight.
-
-### Launcher readiness polling — don't cache one-shot `isReady()`
-
-**Why**: the launcher calls `LlmManager.isReady()` exactly once in
-`LauncherViewModel.init` and caches the result. The 3B model takes
-~15 s to mmap on a cold boot; if the user opens the launcher during
-that window, it caches `false` and never re-checks — UI shows "no
-model loaded" forever until the launcher process is force-stopped
-and reopened. Observed on first v0.5 boot.
-
-Cheap fixes (any one works): (a) if the first check returns false,
-retry every 2 s for ~60 s before giving up; (b) re-query on every
-`submitQuery()` — worst case the submit fails with the service's
-existing "Model not loaded" error and the UI updates on that signal;
-(c) add a readiness-callback AIDL method the launcher subscribes to,
-service invokes it on load-complete. (b) is simplest and
-self-correcting.
+<!-- "Launcher readiness polling" — closed in v0.5.1; `LauncherViewModel.submitQuery()`
+now re-queries `isReady()` if the cached init-time value is false (option b). -->
 
 ### Settings → AI → Tool Access
 
@@ -489,36 +468,9 @@ session with stripped history.
 defense in depth — even if stripping misses a case, the user has an
 out other than knowing to manually start a new chat.
 
-### Consent "Allow" should also grant the Android runtime permission
+<!-- Merged into "Two-layer permission flow — PendingIntent-proxied runtime
+grant via launcher" above (same underlying fix). -->
 
-**Why**: v0.5.1 test feedback. When a write-intent tool (e.g.,
-`add_contact`) needs both HITL consent AND an ungranted Android
-runtime permission (`WRITE_CONTACTS`), the user today has to:
-
-1. Tap **Allow** on the consent card (grants tool-call consent, but
-   not the runtime perm).
-2. Tap **Open settings** on the `PermissionRequiredCard` (takes them
-   out of the launcher to Settings → Apps → ... → Permissions).
-3. Toggle the permission group on.
-4. Navigate back to the launcher.
-5. Re-ask the agent.
-
-Five steps for what the user mentally expressed with one word: *"yes."*
-The two-layer permission model (tool consent + runtime perm) is the
-right security design, but the UX collapses it into a bureaucratic
-path that obscures intent.
-
-**Fix (same path as the existing PendingIntent-proxy item under the
-two-layer permission flow entry)**: when a write tool's HITL consent
-is `ALLOW` AND the MCP returns `needs_permission`, the launcher
-proxies the runtime permission request in-foreground (the launcher
-IS the foreground activity, so no BAL block) via
-`ActivityCompat.requestPermissions` or a `PendingIntent` the MCP
-returned. User sees one dialog (*"Let ContactsMcp modify your
-contacts?"*), taps Allow, write proceeds.
-
-Depends on the same PendingIntent plumbing already queued for v0.6.
-Fold this into that work — it IS that work, from the user's side.
 
 ### Card-disappears-after-click leaves empty chat
 
