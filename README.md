@@ -10,7 +10,7 @@ AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS run
 
 [![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/7493fe15dee9463c9626c170e1e44e92-ed91244c8ecd4aeb.gif)](https://www.loom.com/share/7493fe15dee9463c9626c170e1e44e92)
 
-*Launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through a second LLM pass, and the answer renders in the chat UI alongside an attribution card showing the Contacts app icon. (Demo predates v0.5.)*
+*The thumbnail above is a GIF of the first few seconds (prompt submitted, "Thinking…" indicator) — **click through to watch the full demo**. In the linked video, Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through a second LLM pass, and the answer renders in the chat UI alongside an attribution card showing the Contacts app icon. (Demo predates v0.5; a refreshed recording with 3B + 2 MCPs + HITL write flow is queued.)*
 
 **Current release: `v0.5`** (2026-04-14). Ships the agentic loop with
 per-tool HITL consent, audit log, and cross-MCP chaining across **two**
