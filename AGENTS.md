@@ -231,12 +231,28 @@ Model swaps are multi-file:
 
 ### 6.5 Tagging a release
 
-1. Update `docs/CHANGELOG.md` with a new section; the date must be the date you're actually tagging, not your guess
-2. Push the commit
-3. `git tag -a vX.Y -m "..."` **after** the commit is on `main`
-4. `git push --tags`
-5. Verify: `gh api repos/rufolangus/AAOSP/git/refs/tags --jq '.[].ref'`
-6. Cross-repo version bumps land together — don't tag the umbrella `v0.6` if `platform_frameworks_base` still has v0.5 code
+1. **Pre-tag doc staleness grep.** Before updating CHANGELOG or cutting the tag, sweep for documentation that describes the *old* behavior of anything this release changed. Items shipped and docs untouched are the failure mode that produced the v0.5.1 follow-up cleanup. Run at least:
+
+   ```bash
+   # In the umbrella repo
+   grep -rnE 'not yet wired|not yet built|designed in .docs/|TODO|scaffolded' README.md docs/ AGENTS.md
+   # Any hit is suspect — fixed in the release? Strike/update. Still true? Fine.
+
+   # Repo-specific: grep for any API / path / constant this release moved
+   # (examples from v0.5.1 — adapt per release)
+   grep -rnE '10 ?s|35 ?s|\bstartActivity\b|\bPermissionRequestActivity\b' README.md docs/
+   grep -rnE '2048|0\.5B|qwen2\.5-0\.5b' .    # model/ctx drift from the v0.5 3B swap
+   ```
+
+   Any hit that still describes pre-release behavior must be updated *in the same tag commit*. Cross-repo: run the same grep in `platform_frameworks_base`, `platform_packages_apps_*`, and any MCP repo whose surface changed.
+
+2. Update `docs/CHANGELOG.md` with a new section; the date must be the date you're actually tagging, not your guess. Graduate the `## Unreleased` block into `## vX.Y — <title> (<YYYY-MM-DD>)` and reset a fresh empty `## Unreleased`.
+3. **Pre-tag ROADMAP graduation.** Walk `docs/ROADMAP.md` and for each item ask: did this release close any part of it? If yes, update the entry — either remove it (clean close), mark **✅ shipped in vX.Y** with the remaining-work delta, or collapse duplicate entries that the release revealed to be the same fix. User spotted the v0.5.1 version of this omission; don't repeat it.
+4. Push the commit (docs + CHANGELOG + ROADMAP all updated).
+5. `git tag -a vX.Y -m "..."` **after** the commit is on `main`.
+6. `git push --tags`.
+7. Verify: `gh api repos/rufolangus/<repo>/git/refs/tags --jq '.[].ref'`.
+8. Cross-repo version bumps land together — don't tag the umbrella `v0.6` if `platform_frameworks_base` still has v0.5 code.
 
 ### 6.6 Changing the HITL threading model
 
