@@ -4,7 +4,18 @@ Backward-looking record of what shipped in each tag. Forward-looking work
 lives in [`ROADMAP.md`](./ROADMAP.md). System design lives in
 [`AAOSP_ARCHITECTURE.md`](./AAOSP_ARCHITECTURE.md).
 
-Dates are "first-merged on the fork," not public announcement dates.
+Dates are when the change was merged to the default branch of the affected repo, not public announcement dates. Only `platform_frameworks_base` and `aaosp_platform_build` are actual GitHub forks; see [`AAOSP_ARCHITECTURE.md`](./AAOSP_ARCHITECTURE.md) §"Repository inventory".
+
+---
+
+## Unreleased
+
+Post-v0.5 changes landed on `main` / default branches across the AAOSP repos. Will graduate to a `v0.5.1` section when tagged.
+
+- **`AAOSP` (umbrella) `2aaa97c`** — docs: truth pass. Fixed fabricated CHANGELOG dates (v0.3 was `2026-03-22`, actual tagger date is `2026-04-14`; v0.2 was `2026-02-18`, impossibly before v0.1 — reality is the untagged `42af2cf` milestone on `2026-04-13`). Rewrote `docs/AAOSP_ARCHITECTURE.md` repo inventory: only `platform_frameworks_base` + `aaosp_platform_build` are real GitHub forks; `platform_external_llamacpp` is build-glue only (no llama.cpp source checked in — pulled at build time by `scripts/sync_upstream.sh`); `AgenticLauncher`/`ContactsMcp`/`CalendarMcp`/`sepolicy`/`cuttlefish` are new repos, not forks and not in-tree. Removed unverified Snapdragon 8 Gen 3 benchmark from README (no physical target exists; contradicted ROADMAP's Cuttlefish numbers). Replaced phantom `v0.2.0` tag references with real sha `42af2cf` shipped in v0.5. Bake-in path was the 0.5B filename; v0.5 swapped to 3B Q4_K_M. Moved HITL / session AIDL / chaining / `launch_app` from "not yet wired" to "shipped in v0.5" in the status table.
+- **`platform_packages_apps_ContactsMcp` `df27b4b`** — README: fix dangling `./CalendarMcp_README.md` link; CalendarMcp lives in its own repo, not as a local file.
+- **`platform_frameworks_base` `399b323`** — `ILlmService.aidl`: drop stale forward-reference in `revokeToolGrant` javadoc ("forthcoming v0.5" / "v0.4 exposes it via `cmd llm revoke`") — the AIDL now ships on `aaosp-v15`.
+- **`AAOSP` (this commit)** — add `AGENTS.md` at repo root encoding the expensive-to-rediscover rules (repo topology, don't-fabricate rules, docs-track-code-live principle, multi-file touch recipes, AOSP landmines, pre-commit gate). Bootstrap this `## Unreleased` section so future changes have a place to land.
 
 ---
 
