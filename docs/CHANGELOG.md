@@ -241,7 +241,7 @@ have ROADMAP fixes queued.
 
 ---
 
-## v0.3 — typed tool-call events + UI attribution + prompt rewrite (2026-03-22)
+## v0.3 — typed tool-call events + UI attribution + prompt rewrite (2026-04-14)
 
 Replaced the prior untyped `onToolCall(String, String)` with a rich
 `McpToolCallInfo` parcelable. Launcher renders the owning app's icon
@@ -267,7 +267,9 @@ wants to act through, always.
 
 ---
 
-## v0.2 — bake model + JNI into /system (2026-02-18)
+## v0.2 — bake model + JNI into /system (2026-04-13, untagged milestone)
+
+Never cut as a git tag; this section records the commit-set (`42af2cf` on the umbrella, `de15536` on `aaosp_platform_build`, `6137019` on `platform_external_llamacpp`) that landed between v0.1.0 and v0.3.0.
 
 - Qwen 2.5 0.5B Instruct `.gguf` baked into `/product/etc/llm/` at
   build time via `PRODUCT_COPY_FILES` (no more post-boot `adb push`).

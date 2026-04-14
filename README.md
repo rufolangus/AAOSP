@@ -289,7 +289,7 @@ AAOSP ships with **Qwen 2.5**, auto-selected by device capability:
 | 4-8GB | Qwen 2.5 1.5B Q4_K_M | ~1.1 GB | Faster, lighter |
 | <4GB | Qwen 2.5 0.5B Q8_0 | ~0.5 GB | Basic capability |
 
-Runs entirely on-device via llama.cpp. No network required. Inference on a Snapdragon 8 Gen 3: ~15-20 tokens/sec with the 3B model.
+Runs entirely on-device via llama.cpp. No network required. Only hardware verified in-tree so far is Cuttlefish x86_64 (silvermont) on cloud-build CPU — see `docs/ROADMAP.md` for measured numbers. Phone-class performance will be benchmarked once we have a physical target.
 
 Qwen 2.5 was chosen for its structured output reliability — it consistently generates valid JSON tool calls, which is critical for MCP.
 
@@ -368,8 +368,8 @@ The flow: **check consent -> prompt if needed -> check confirmation -> prompt or
 | **[platform_packages_apps_CalendarMcp](https://github.com/rufolangus/platform_packages_apps_CalendarMcp)** | Second reference MCP (`list_events`, `find_free_time`, `create_event`) — proves multi-MCP + cross-MCP chaining | `main` |
 | **[platform_external_llamacpp](https://github.com/rufolangus/platform_external_llamacpp)** | llama.cpp Android.bp, `libllm_jni.so` JNI bridge | `main` |
 | **[aaosp_platform_build](https://github.com/rufolangus/aaosp_platform_build)** | `PRODUCT_PACKAGES` + privapp xml install for system_ext | `aaosp` |
-| **aaosp_system_sepolicy** | `llm` service_contexts + fuzzer exception (fork created, push pending pack-size fix) | `aaosp` |
-| **aaosp_device_google_cuttlefish** | Cuttlefish bring-up tweaks (fork created, push pending pack-size fix) | `aaosp` |
+| **[aaosp_system_sepolicy](https://github.com/rufolangus/aaosp_system_sepolicy)** | `llm` service_contexts + fuzzer exception — **new repo, empty on GitHub**; patches live on the build VM, push blocked by pack-size limit | (none yet) |
+| **[aaosp_device_google_cuttlefish](https://github.com/rufolangus/aaosp_device_google_cuttlefish)** | Cuttlefish bring-up tweaks — **new repo, empty on GitHub**; same pack-size block | (none yet) |
 
 For the deep technical view (file-by-file changes, build pitfalls, debugging
 gotchas, current state of bring-up), see **[docs/AAOSP_ARCHITECTURE.md](docs/AAOSP_ARCHITECTURE.md)**.
@@ -434,7 +434,7 @@ m -j$(nproc)
 launch_cvd
 ```
 
-That's it. As of `v0.2.0` the JNI library and the Qwen GGUF are baked into the system image (`/system/lib64/libllm_jni.so`, `/product/etc/llm/qwen2.5-0.5b-instruct-q8_0.gguf`), so the LLM is live on first boot with no `adb push` step.
+That's it. Since the `/system` bake-in milestone (commit `42af2cf`, shipped in v0.5) the JNI library and the Qwen GGUF are baked into the system image (`/system/lib64/libllm_jni.so`, and the Qwen 3B Q4_K_M GGUF under `/product/etc/llm/`), so the LLM is live on first boot with no `adb push` step.
 
 > If your first `launch_cvd` drops into recovery with `set_policy_failed:/data/local`, that's a known Cuttlefish first-boot quirk, not AAOSP. Pick **Wipe data / factory reset** from the recovery menu, reboot once, and you'll land in a working Android. The next launches on the same instance behave normally.
 
@@ -458,7 +458,7 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 | SELinux `llm` service_contexts | ✅ Live |
 | Privapp permission allowlist for `SUBMIT_LLM_REQUEST` | ✅ Live |
 | Tool-call loop: prompt injection → Qwen `<tool_call>` → dispatch to `IMcpToolProvider.invokeTool()` → humanized result | ✅ Verified end-to-end with Qwen 2.5 0.5B + ContactsMcp |
-| **`/system` bake-in (`v0.2.0`)**: `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm` | ✅ First boot is fully functional; no `adb push` step |
+| **`/system` bake-in** (commit `42af2cf`, shipped in v0.5): `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm` | ✅ First boot is fully functional; no `adb push` step |
 | **Tool-call attribution (`v0.3.0`)**: typed `McpToolCallInfo` parcelable on `ILlmResponseCallback`, fired at STARTED + COMPLETED with timing | ✅ Launcher renders app icon + tool name + duration as the call runs |
 | **Loading state (`v0.3.0`)**: `ThinkingCard` between submit and first event | ✅ Chat surface never goes blank during inference |
 | **System prompt rewrite (`v0.3.0`)**: privacy posture + GROUNDING rule + query-normalization examples + few-shot | ✅ No more name/number hallucination; "John's number" no longer queries `Johns` |
@@ -468,10 +468,11 @@ Designed and implemented but **not yet wired/verified**:
 
 | Component | Status |
 |---|---|
-| Human-in-the-loop UI (consent / confirmation / don't-ask-again / audit) | Designed in `docs/`, not yet wired into `LlmManagerService` |
+| Human-in-the-loop UI (consent / confirmation / don't-ask-again / audit) | **Shipped in v0.5** — `HitlConsentStore`, `ConsentGate`, `ConsentPromptCard` + audit log wired into `LlmManagerService`. End-to-end verification on Cuttlefish pending a fresh demo recording |
+| Session AIDL methods on `ILlmService` (`confirmToolCall`, `revokeToolGrant`, `getRecentAuditCalls`, `endSession`) | **Shipped in v0.5** |
+| Agentic chaining across multiple MCPs + built-in `launch_app` tool | **Shipped in v0.5** with CalendarMcp as the second reference MCP |
 | `LlmSessionStore` SQLite persistence + tool reliability stats | Class scaffolded, not yet wired |
-| Session AIDL methods on `ILlmService` | Designed, not yet added |
-| Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | 0.5B verified; tiering logic not yet built |
+| Tiered Qwen model auto-select (0.5B / 1.5B / 3B / 7B) | v0.5 hard-defaults to 3B Q4_K_M; auto-select-by-RAM logic not yet built |
 | Cuttlefish boot stability across rebuilds | Hits dm-verity recovery if `m systemimage` is used without rebuilding `boot.img`/`vbmeta.img` — must `m -j32` |
 
 For the platform debugging trail (Android-15 quirks, Soong cache gotchas,
@@ -491,8 +492,8 @@ contributions right now:
 - **Tiered model selector**: Auto-pick Qwen 2.5 size (0.5B / 1.5B / 3B / 7B) by `ActivityManager.MemoryInfo.totalMem`.
 - **Model evaluation**: Test different Qwen 2.5 quantizations for tool-calling accuracy vs. speed.
 - **Launcher UX**: The server-driven UI schema needs more element types (charts, images, forms).
-- ~~**Bake LLM into the OS**~~: ✅ done in `v0.2.0`. `libllm_jni.so` ships in `/system/lib64/`, the Qwen GGUF in `/product/etc/llm/`. First boot is fully functional with no `adb push`.
-- **Repo manifest hardening**: Push `system/sepolicy` and `device/google/cuttlefish` forks (currently blocked on github pack-size limit; needs `git gc` or orphan-branch workaround).
+- ~~**Bake LLM into the OS**~~: ✅ done in the `/system` bake-in milestone (commit `42af2cf`, shipped in v0.5). `libllm_jni.so` ships in `/system/lib64/`, the Qwen GGUF in `/product/etc/llm/`. First boot is fully functional with no `adb push`.
+- **Push sepolicy and cuttlefish repos**: `aaosp_system_sepolicy` and `aaosp_device_google_cuttlefish` exist on GitHub but are empty shells — patches live on the build VM and the push has been blocked by GitHub's pack-size limit. Needs `git gc --aggressive` or an orphan-branch snapshot push.
 
 ## License
 
