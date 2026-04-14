@@ -358,3 +358,49 @@ is needed. Mitigate with a larger N or a more selective trim policy
 it* — the token-count log landing in v0.5.1 will tell us whether
 we're actually hitting ceilings in realistic usage. Don't
 speculatively trim.
+
+### Strip stale `needs_permission` tool results from conversation history
+
+**Why**: observed during v0.5.1 testing. When a write-intent tool
+returns `{"error":"needs_permission"}`, that tool result lands in
+`conversationJson`. On the **next** user turn that asks for a
+similar write, the model reads the prior failure and refuses to
+even try — it short-circuits to prose ("Please go to Settings...")
+without emitting a tool call at all. Reasonable caution on the
+model's part, but wrong in context: the user may have just granted
+the permission before asking again (that's precisely what the
+"Open settings" card invited them to do), and the model's
+cached-failure refusal denies them a fresh attempt.
+
+Reproduced cleanly in the v0.5.1 test session:
+
+- Turn 1: "Add Sarah Chen..." → consent → Allow → `needs_permission`
+  card → user taps Open Settings (but doesn't actually grant).
+- Turn 2 (same chat): "Add Kristian..." → model emits prose
+  "I couldn't add Kristian — needs WRITE_CONTACTS..." with **no
+  tool call attempted**. Chain completes at iter=0.
+- Turn 3 (fresh chat after `endSession`, permission NOW granted):
+  same prompt → model emits `<tool_call>` → HITL → write succeeds.
+
+The state the user cares about (permission grant) lives outside
+the chat and can change between turns; the model's history-driven
+caution is blind to that.
+
+**Fix sketch**: when the launcher builds `conversationJson` for
+the next submit, skip any `role: "tool"` entry whose `content`
+contains `"error":"needs_permission"` for the pkg/tool the user
+has since interacted with (minimum: skip any such entry older
+than the most recent user turn). Or server-side: same filter in
+`LlmManagerService.appendConversationHistory`. Launcher is
+lighter-touch.
+
+**Trade-off**: the model loses the fact that a past attempt
+failed. Which is fine — the alternative is what we saw in v0.5.1
+testing: the model refuses to act on real requests because of
+state it can't verify. If the failure condition is still in
+effect, the same failure will recur at tool-call time and the
+card will re-fire; the user will have lost one inference pass to
+learn that, which is better than never attempting.
+
+**Depends on**: nothing structurally. Launcher-only change; can
+land independently. Good v0.6 candidate.
