@@ -457,7 +457,7 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 | Agentic Launcher install | ✅ Installs |
 | SELinux `llm` service_contexts | ✅ Live |
 | Privapp permission allowlist for `SUBMIT_LLM_REQUEST` | ✅ Live |
-| Tool-call loop: prompt injection → Qwen `<tool_call>` → dispatch to `IMcpToolProvider.invokeTool()` → humanized result | ✅ Verified end-to-end with Qwen 2.5 0.5B + ContactsMcp |
+| Tool-call loop: prompt injection → Qwen `<tool_call>` → dispatch to `IMcpToolProvider.invokeTool()` → humanized result | ✅ Verified end-to-end. v0.1.0 bring-up was Qwen 2.5 0.5B + ContactsMcp. v0.5.1 live test (2026-04-14): Qwen 2.5 3B + ContactsMcp + CalendarMcp, including HITL write-tool flow (`add_contact`, consent card → Allow → write succeeds) and missing-permission fallback (→ `PermissionRequiredCard` → Open Settings) |
 | **`/system` bake-in** (commit `42af2cf`, shipped in v0.5): `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm` | ✅ First boot is fully functional; no `adb push` step |
 | **Tool-call attribution (`v0.3.0`)**: typed `McpToolCallInfo` parcelable on `ILlmResponseCallback`, fired at STARTED + COMPLETED with timing | ✅ Launcher renders app icon + tool name + duration as the call runs |
 | **Loading state (`v0.3.0`)**: `ThinkingCard` between submit and first event | ✅ Chat surface never goes blank during inference |

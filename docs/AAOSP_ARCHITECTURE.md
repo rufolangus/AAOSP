@@ -187,7 +187,7 @@ m -j32
 # Boot
 launch_cvd --daemon \
   --gpu_mode=guest_swiftshader --start_webrtc=true \
-  --cpus=8 --memory_mb=8192 \
+  --cpus=8 --memory_mb=16384 \
   --extra_kernel_cmdline='androidboot.selinux=permissive'
 
 # Verify (no side-load needed — libllm_jni.so ships in /system/lib64,

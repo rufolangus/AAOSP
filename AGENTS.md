@@ -80,9 +80,16 @@ Cuttlefish run:
 ```bash
 launch_cvd --daemon \
   --gpu_mode=guest_swiftshader --start_webrtc=true \
-  --cpus=8 --memory_mb=8192 \
+  --cpus=8 --memory_mb=16384 \
   --extra_kernel_cmdline='androidboot.selinux=permissive'
 ```
+
+Memory: **16 GB** (`memory_mb=16384`). The 3B model mmaps ~2 GB for
+its weights, plus Android's own footprint, plus the
+conversation-history growth we've observed in testing — 8 GB was
+survivable on v0.1.0 with the 0.5B model but tight under v0.5.1+
+with 3B + multi-MCP chains. The build VM has 125 GB, so 16 GB for
+Cuttlefish is no stress.
 
 First boot sometimes drops into recovery with `set_policy_failed:/data/local`. Pick **Wipe data / factory reset**, reboot once, it'll be fine. This is a Cuttlefish quirk, not AAOSP.
 
