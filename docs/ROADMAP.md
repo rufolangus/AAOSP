@@ -488,3 +488,53 @@ session with stripped history.
 **Depends on**: the stripping fix above should land first. This is
 defense in depth — even if stripping misses a case, the user has an
 out other than knowing to manually start a new chat.
+
+### Consent "Allow" should also grant the Android runtime permission
+
+**Why**: v0.5.1 test feedback. When a write-intent tool (e.g.,
+`add_contact`) needs both HITL consent AND an ungranted Android
+runtime permission (`WRITE_CONTACTS`), the user today has to:
+
+1. Tap **Allow** on the consent card (grants tool-call consent, but
+   not the runtime perm).
+2. Tap **Open settings** on the `PermissionRequiredCard` (takes them
+   out of the launcher to Settings → Apps → ... → Permissions).
+3. Toggle the permission group on.
+4. Navigate back to the launcher.
+5. Re-ask the agent.
+
+Five steps for what the user mentally expressed with one word: *"yes."*
+The two-layer permission model (tool consent + runtime perm) is the
+right security design, but the UX collapses it into a bureaucratic
+path that obscures intent.
+
+**Fix (same path as the existing PendingIntent-proxy item under the
+two-layer permission flow entry)**: when a write tool's HITL consent
+is `ALLOW` AND the MCP returns `needs_permission`, the launcher
+proxies the runtime permission request in-foreground (the launcher
+IS the foreground activity, so no BAL block) via
+`ActivityCompat.requestPermissions` or a `PendingIntent` the MCP
+returned. User sees one dialog (*"Let ContactsMcp modify your
+contacts?"*), taps Allow, write proceeds.
+
+Depends on the same PendingIntent plumbing already queued for v0.6.
+Fold this into that work — it IS that work, from the user's side.
+
+### Card-disappears-after-click leaves empty chat
+
+**Why**: observed in v0.5.1 testing. When user taps `Open settings`
+on `PermissionRequiredCard`, the card dismisses. When control returns
+to the launcher, the chat has only the user's original turn and then
+empty space where the card was. No indication of what happened or how
+to proceed.
+
+**Fix**: don't remove the card on tap-launch. Keep it rendered as a
+conversation element showing *"Sent you to Settings → ContactsMcp →
+Permissions."* with a small "Try again" affordance. If the user
+granted the perm, the retry button re-dispatches the original tool
+call (state preserved on the launcher side in `PendingPermission`).
+If they didn't, the retry fires the same error flow — but at least
+there's something to tap.
+
+Launcher-only change. Pairs naturally with the "Retry affordance when
+agent refuses from history" entry above — same retry mechanism.
