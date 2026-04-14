@@ -283,3 +283,78 @@ enablement leak anything.
 diverges), but it's a dev-only shortcut that should become a real
 wrapper method surface before anyone else writes a client against
 the AIDL. ~30 min of plumbing.
+
+### DynamicToolRegistry — lazy-load MCP tool schemas
+
+**Why**: today `LlmManagerService.composeSystemPrompt()` inlines the
+full JSON schema for every registered MCP tool. With v0.5's two MCPs
++ `launch_app` it's ~N tokens (exact number pending the token-count
+log landing). Adding MessagesMcp / ClockMcp / NotesMcp / CameraMcp —
+the next obvious apps — will blow the 2048-token context before the
+user has typed a word. The pattern used by Claude Code (ENABLE_TOOL_SEARCH):
+ship a catalog (`{package, tool, oneLineDescription}` tuples) and a
+built-in `search_tools(keyword_or_category)` tool; fetch the full
+schema into context only when the model reaches for it.
+
+**Design sketch**: new `McpToolCatalog` parcelable with lightweight
+entries; `LlmManagerService.composeSystemPrompt()` writes catalog
+instead of full schemas; built-in `search_tools` tool synthesized by
+the framework (same mechanism as `launch_app`); returned schemas
+cached in-session to avoid double-fetch on repeated use.
+
+**Trade-off**: one extra inference turn on first use of any tool.
+Acceptable; avoids a hard ceiling on ecosystem growth.
+
+**Depends on**: nothing directly. Gating: probably only worth the
+plumbing once we have evidence a 4th MCP would push us past 2048 —
+see the token-count log landing in v0.5.1.
+
+### Inference-based context compaction
+
+**Why**: `runChain` accumulates turns + tool results across iterations
+until it hits `MAX_CHAIN_ITERATIONS_CAP=8`. Naive truncation drops
+semantic context. Claude Code triggers a summary-inference turn at
+~80% of context and replaces the older range with a `<summary>` block.
+For AAOSP on a 2048 window, the trigger would fire at ~1500 tokens.
+
+**Design sketch**: `CompactionHook` in `LlmManagerService` checks
+token count before each iteration. At threshold, fire a side
+inference call at `temperature=0.0` with a fixed compaction prompt
+("summarize in-progress work for continuity"). Replace the compacted
+turn range with the summary. Retain the live iteration's `tool_use`
+and `tool_result` intact so the model can still act on them.
+
+**Trade-off**: one full extra inference pass at each compaction point
+(~15-20 s on Cuttlefish CPU). Worse: 3B-model summary reliability is
+unproven — a bad summary can mislead the next turn more than
+truncation would. Needs evaluation before committing.
+
+**Depends on**: `LlmSessionStore` actually writing (so the compacted
+summary can be persisted as the session's new origin, not just held in
+memory). v0.6 work.
+
+### Launcher-side tool-result clearing
+
+**Why**: `tool_result` payloads can be bulky — an MCP search returning
+many records, a JSON file read, a large log. After the model has
+extracted what it needed, these payloads continue to occupy context
+every subsequent turn with no additional value. Claude Code's pattern:
+strip the `content` of `tool_result` entries older than N turns,
+preserving `tool_use_id` so the model still sees the call happened.
+
+**Design sketch**: `AgenticLauncher`'s `conversationJson` builder
+strips `tool_result.content` for any turn older than N=3, replacing
+with `[cleared: <tool> returned <status> at turn <k>]`. `tool_use`
+metadata stays. No framework change needed — launcher already owns
+`conversationJson` composition today.
+
+**Trade-off**: if the model retrospectively needs detail from a
+cleared result, it must re-invoke the tool. On Qwen 3B this is a
+real cost — the model may not reliably recognize the re-invocation
+is needed. Mitigate with a larger N or a more selective trim policy
+(only clear over-threshold-byte results).
+
+**Depends on**: nothing structurally. Blocking on *evidence we need
+it* — the token-count log landing in v0.5.1 will tell us whether
+we're actually hitting ceilings in realistic usage. Don't
+speculatively trim.
