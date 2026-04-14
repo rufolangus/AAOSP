@@ -12,9 +12,9 @@ When in doubt about *what AAOSP is*, read the README. When in doubt about
 
 ## Demo
 
-[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-0fe3e8877cc50875.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/7493fe15dee9463c9626c170e1e44e92-ed91244c8ecd4aeb.gif)](https://www.loom.com/share/7493fe15dee9463c9626c170e1e44e92)
 
-*Launcher answering "what's John's number?" — verified end-to-end on Cuttlefish 2026-04-12.*
+*Launcher answering "what's John's number?" — verified end-to-end on Cuttlefish 2026-04-13 (`v0.3.0`). The card under the answer shows the Contacts app icon + `search_contacts · 240 ms` — the new typed-event attribution surface.*
 
 ## Component map (inside `system_server`)
 
@@ -141,6 +141,12 @@ system image with the app included.
 | Tool-call dispatch | ✅ | `maybeExecuteToolCall()` → `IMcpToolProvider.invokeTool()` with 10s timeout |
 | Response humanization | ⚠️ 1-pass | Current `aaosp-v15` HEAD humanizes tool-result JSON via `humanizeToolResult()`. A 2-pass agentic loop (`buildContinuationPrompt()` feeding `<tool_response>` back to the LLM) was prototyped on the cloud VM but is **not yet pushed** to github. |
 | **`/system` bake-in** (`v0.2.0`) | ✅ | `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm`. First boot is fully functional with no `adb push`. |
+| **Auto-grant runtime perms** (`v0.2.0`) | ✅ | `default-permissions-aaosp.xml` in `/system_ext/etc/default-permissions/` grants `READ_CONTACTS` to ContactsMcp on first boot — no `pm grant`. |
+| **Typed tool-call events** (`v0.3.0`) | ✅ | `McpToolCallInfo` parcelable on `ILlmResponseCallback.onToolCall` / `onToolResult`. Fields: sessionId, toolName, packageName, serviceName, argumentsJson, resultJson, status (STARTED/COMPLETED/FAILED/PERMISSION_REQUIRED), durationMillis. Replaces the loose-string callbacks. |
+| **Tool-call attribution UI** (`v0.3.0`) | ✅ | Launcher resolves app icon + label from `packageName` and renders an attribution card alongside each tool call. The user always sees which app the LLM is asking. |
+| **`ThinkingCard`** (`v0.3.0`) | ✅ | Spinner + "Thinking…" between submit and first event. Chat surface no longer blanks. |
+| **System prompt rewrite** (`v0.3.0`) | ✅ | Single `SYSTEM_PROMPT_HEADER` used by both inference passes. Sections: PRIVACY (local processing), GROUNDING (no fabrication), TOOLS (use them, normalize queries), OUTPUT FORMAT, FEW_SHOT EXAMPLES. Designed for Qwen 2.5 0.5B's specific failure modes. |
+| **Inference temperature split** (`v0.3.0`) | ✅ | Tool-call pass uses `min(request.temperature, 0.1)` for deterministic JSON; answer pass uses caller's requested temp (default 0.7). |
 | HITL consent / confirmation / audit | ❌ designed only | `mcpRequiresConfirmation` is parsed; UI not wired |
 | Per-tool permission enforcement | ❌ | `McpToolInfo.permission` is parsed but not checked at dispatch time |
 | `LlmSessionStore` (SQLite, tool reliability stats) | ❌ scaffolded | Class exists, no binder integration |

@@ -8,9 +8,9 @@ Android has always been a platform built on protocols. Intents, Content Provider
 
 AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS runs the model. The user just talks.
 
-[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/edac9d03682b4413afd2fcc80693275e-0fe3e8877cc50875.gif)](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e)
+[![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/7493fe15dee9463c9626c170e1e44e92-ed91244c8ecd4aeb.gif)](https://www.loom.com/share/7493fe15dee9463c9626c170e1e44e92)
 
-> ▶️ **The thumbnail above looks blank — that's a Loom timing quirk, the actual demo is further into the video.** [Click through to watch the full 30-second flow on Loom](https://www.loom.com/share/edac9d03682b4413afd2fcc80693275e). What you'll see: launcher answering "what's John's number?" with Qwen 2.5 0.5B emitting a `<tool_call>` for `search_contacts`, AAOSP dispatching to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-tripping back through the LLM, and the answer rendering in the chat UI. Verified live on Cuttlefish, 2026-04-12. *(A better-framed recording is in the works.)*
+*Launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through a second LLM pass, and the answer renders in the chat UI alongside an attribution card showing the Contacts app icon. Verified live on Cuttlefish, 2026-04-13 (`v0.3.0`).*
 
 > **⭐ If the demo above made you nod, [star the repo](https://github.com/rufolangus/AAOSP).** It's the cheapest way to signal which AOSP forks are worth tracking and helps the right contributors find this.
 
@@ -448,6 +448,10 @@ Verified end-to-end on Cuttlefish (`aosp_cf_x86_64_phone-trunk_staging-userdebug
 | Privapp permission allowlist for `SUBMIT_LLM_REQUEST` | ✅ Live |
 | Tool-call loop: prompt injection → Qwen `<tool_call>` → dispatch to `IMcpToolProvider.invokeTool()` → humanized result | ✅ Verified end-to-end with Qwen 2.5 0.5B + ContactsMcp |
 | **`/system` bake-in (`v0.2.0`)**: `libllm_jni.so` in `/system/lib64`, Qwen GGUF in `/product/etc/llm` | ✅ First boot is fully functional; no `adb push` step |
+| **Tool-call attribution (`v0.3.0`)**: typed `McpToolCallInfo` parcelable on `ILlmResponseCallback`, fired at STARTED + COMPLETED with timing | ✅ Launcher renders app icon + tool name + duration as the call runs |
+| **Loading state (`v0.3.0`)**: `ThinkingCard` between submit and first event | ✅ Chat surface never goes blank during inference |
+| **System prompt rewrite (`v0.3.0`)**: privacy posture + GROUNDING rule + query-normalization examples + few-shot | ✅ No more name/number hallucination; "John's number" no longer queries `Johns` |
+| **Inference temperature split (`v0.3.0`)**: tool-call pass `temp=0.1`, answer pass caller-controlled | ✅ Deterministic `<tool_call>` JSON; light creativity allowed in the answer phase |
 
 Designed and implemented but **not yet wired/verified**:
 
