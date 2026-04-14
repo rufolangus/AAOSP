@@ -45,7 +45,7 @@ Nine repos make up AAOSP. **Only two are actual GitHub forks.** The rest are new
 | Launcher UI, consent cards, chat surface | `platform_packages_apps_AgenticLauncher` |
 | New reference MCP app | **New `platform_packages_apps_<Name>Mcp` repo**, mirrored at `packages/apps/<Name>Mcp` on the build VM |
 | `repo` manifests, architecture doc, cross-cutting plans, this file | `AAOSP` (umbrella) |
-| SELinux, cuttlefish overlays | `aaosp_system_sepolicy` / `aaosp_device_google_cuttlefish` once we unblock the push; until then, build VM local only |
+| SELinux, cuttlefish overlays | `aaosp_system_sepolicy` / `aaosp_device_google_cuttlefish` — both live on GitHub as orphan-root snapshots (see §2 repo topology table). Edit locally on the build VM's `repo`-managed checkout, then re-snapshot + force-push the `aaosp` branch (the VM's full-history `aaosp` branch stays put for local `repo` compatibility) |
 
 ### Verify the topology before citing it
 
