@@ -10,7 +10,17 @@ AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS run
 
 [![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/7493fe15dee9463c9626c170e1e44e92-ed91244c8ecd4aeb.gif)](https://www.loom.com/share/7493fe15dee9463c9626c170e1e44e92)
 
-*Launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through a second LLM pass, and the answer renders in the chat UI alongside an attribution card showing the Contacts app icon. Verified live on Cuttlefish, 2026-04-13 (`v0.3.0`).*
+*Launcher answering "what's John's number?" — Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through a second LLM pass, and the answer renders in the chat UI alongside an attribution card showing the Contacts app icon. (Demo predates v0.5.)*
+
+**Current release: `v0.5`** (2026-04-14). Ships the agentic loop with
+per-tool HITL consent, audit log, and cross-MCP chaining across **two**
+reference MCPs: `ContactsMcp` (contacts read + write) and `CalendarMcp`
+(calendar read + write). Default model is now **Qwen 2.5 3B** — the 0.5B
+demo above was pattern-matching; 3B actually reasons about tool choice.
+See [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the full v0.5 delta,
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next, and
+[`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md) for parked designs
+(third-party MCP trust model, provider-contributed examples).
 
 > **⭐ If the demo above made you nod, [star the repo](https://github.com/rufolangus/AAOSP).** It's the cheapest way to signal which AOSP forks are worth tracking and helps the right contributors find this.
 
@@ -180,7 +190,7 @@ The parser in `frameworks/base/services/core/java/com/android/server/pm/McpManif
 </mcp-server>
 ```
 
-### Support matrix (v0.1.0)
+### Support matrix (v0.5)
 
 | Element / attribute | Parsed into `McpRegistry` | Used in the runtime today |
 |---|---|---|
@@ -259,7 +269,7 @@ interface IMcpToolProvider {
 
 ### 3. That's it
 
-The OS handles everything else (status of each piece as of `v0.1.0`):
+The OS handles everything else (status of each piece as of `v0.5`):
 
 - **Discovery** ✅ — `LlmManagerService.discoverMcpServices()` runs at `PHASE_BOOT_COMPLETED`, reads every installed app's manifest, and registers `<mcp-server>` entries into `McpRegistry`.
 - **Prompt injection** ✅ — every registered tool is serialized into Qwen's `<tools>…</tools>` chat template block on each inference call.
@@ -354,7 +364,8 @@ The flow: **check consent -> prompt if needed -> check confirmation -> prompt or
 | **[AAOSP](https://github.com/rufolangus/AAOSP)** | Umbrella: `repo` manifests, SELinux, test apps, docs | `main` |
 | **[platform_frameworks_base](https://github.com/rufolangus/platform_frameworks_base)** | LLM Service, MCP schema/parser, BIND_LLM_MCP_SERVICE, ParsingPackageUtils + aapt2 patches, AIDL | `aaosp-v15` |
 | **[platform_packages_apps_AgenticLauncher](https://github.com/rufolangus/platform_packages_apps_AgenticLauncher)** | Compose launcher, binder client, privapp permission allowlist | `main` |
-| **[platform_packages_apps_ContactsMcp](https://github.com/rufolangus/platform_packages_apps_ContactsMcp)** | Reference MCP-providing app (`search_contacts`, `get_contact`, `list_favorites`) | `main` |
+| **[platform_packages_apps_ContactsMcp](https://github.com/rufolangus/platform_packages_apps_ContactsMcp)** | First reference MCP (`search_contacts`, `get_contact`, `list_favorites`, `add_contact`, `update_contact`) | `main` |
+| **[platform_packages_apps_CalendarMcp](https://github.com/rufolangus/platform_packages_apps_CalendarMcp)** | Second reference MCP (`list_events`, `find_free_time`, `create_event`) — proves multi-MCP + cross-MCP chaining | `main` |
 | **[platform_external_llamacpp](https://github.com/rufolangus/platform_external_llamacpp)** | llama.cpp Android.bp, `libllm_jni.so` JNI bridge | `main` |
 | **[aaosp_platform_build](https://github.com/rufolangus/aaosp_platform_build)** | `PRODUCT_PACKAGES` + privapp xml install for system_ext | `aaosp` |
 | **aaosp_system_sepolicy** | `llm` service_contexts + fuzzer exception (fork created, push pending pack-size fix) | `aaosp` |
