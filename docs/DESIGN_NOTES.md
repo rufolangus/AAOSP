@@ -633,7 +633,7 @@ Built-in tool surface grows the system prompt. We already showed in v0.5.1 measu
 
 ---
 
-## Role-based orchestrators (default agent) — framework runs the loop, orchestrator declares policy
+## Role-based orchestrators (default agent) — orchestrator proposes, framework validates and enforces
 
 **Status: strong candidate for implementation.** Not decided yet — real open questions listed below — but this shape is closer to "we should build it" than most entries in this file. Framed here as the likely answer to the UX-metaphor gap raised in the open-grants section above; if it works, much of that question doesn't need to be answered in its original form.
 
@@ -672,15 +672,20 @@ Read bluntly: **what we currently call "the orchestrator" already lives with the
 - *Pros:* maximum variety. A radically different loop is possible (speculative tool calls, retrieval-augmented reasoning, multi-turn planning schemas).
 - *Cons:* the loop *is* the trust boundary. Moving it into app code makes the permission-laundering invariant unenforceable from the OS side — a third-party orchestrator can short-circuit it. Tool dispatch + HITL + audit get duplicated across every orchestrator and subtly diverge.
 
-**Option B — orchestrator declares policy on top of a framework loop.** `LlmManagerService` keeps `runChain` and the invariants. Orchestrators declare, per role-holder:
+**Option B — orchestrator *proposes* policy; framework *validates and enforces*.** `LlmManagerService` keeps `runChain` *and owns the policy*. Orchestrators are proposers of configuration, not owners of policy. Every orchestrator-supplied input is treated as untrusted and runs through a framework-side gate before it's applied — the same posture we already take toward MCP tool results.
 
-- System prompt (full override, or base + additions)
-- Tool allowlist / denylist drawn from what the user has granted
-- HITL policy (can be *stricter* than default — force per-call consent on read tools, extend cooldowns — never looser)
-- UI surfaces (consent card layout, tool-call display, streaming renderer)
-- Preferred model (framework may or may not honor depending on what's loaded; hint, not guarantee)
+What the orchestrator proposes, and what the framework does with each proposal:
 
-- *Pros:* trust boundary stays in `system_server`. Invariants stay enforceable. No duplication. The "paranoid agent" becomes a policy configuration, not a rewrite. Variety is still real: a focus-mode agent with a minimal prompt and read-only allowlist is genuinely different from a dev-mode agent exposing raw token streams.
+- **System prompt** — orchestrator supplies a base + additions. Framework accepts but prepends/appends the framework-owned safety preamble, grounding rules, and tool-block format. Orchestrator cannot remove or override the enforced parts.
+- **Tool allowlist / denylist** — orchestrator submits a proposed set. Framework intersects with what the caller (i.e. the role-holder's UID) has actually been granted by the user. Orchestrator can narrow, never widen.
+- **HITL policy** — orchestrator proposes per-tool strictness. Framework enforces that proposed strictness can go *up* (force per-call consent on a tool that would otherwise be session-scoped) but never *down* below the non-negotiables (write-intent tools stay HITL; `FOREVER` stays downgraded to `SESSION` for write-intent).
+- **UI surfaces** — consent card layout, tool-call display, streaming renderer. Framework delegates rendering via Binder callbacks; the *decision* path (consent granted vs denied, tool invoked vs not) is framework-owned.
+- **Preferred model** — orchestrator states a preference. Framework treats it as a hint; may honor or refuse based on what's loaded, device capacity, and scheduling. Never a guarantee.
+- **Iteration / timeout overrides** — orchestrator may propose shorter limits (a focus agent might cap at 3 iterations). Framework clamps to framework-owned maxima; never extended beyond them.
+
+This formulation makes the trust boundary explicit: **anything an orchestrator submits is untrusted input; the framework validates first and applies second.** The set of non-negotiable invariants *is* the policy specification. Everything else is configuration inside the invariants.
+
+- *Pros:* trust boundary stays in `system_server` and is **named**, not implicit. Invariants stay enforceable against hostile or buggy orchestrators. No duplication across orchestrators. The "paranoid agent" becomes a policy configuration, not a rewrite. Variety is still real: a focus-mode agent with a minimal prompt and read-only allowlist is genuinely different from a dev-mode agent exposing raw token streams.
 - *Cons:* variety is bounded. Orchestrators differ in *scope and presentation*, not in *algorithm*. A radically novel loop shape needs either Option C hooks or an AAOSP core change.
 
 **Option C — hybrid.** Framework loop with well-defined extension points at specific stages (prompt composition, pre-dispatch tool filter, post-tool result transform, iteration limit override). Orchestrators can hook individual stages without owning the whole loop.
@@ -689,6 +694,21 @@ Read bluntly: **what we currently call "the orchestrator" already lives with the
 - *Cons:* each extension point is an API commitment we maintain forever. Design those badly and we've shipped a bad API; design them well and we've pre-committed to every possible orchestrator shape users haven't asked for yet.
 
 **Position: Option B for the first cut.** It preserves the invariants we care about, delivers real variety, and does not over-commit on API surface. Option C is the natural evolution if Option B's variety limits bite; Option A is probably never right because the cost is the trust story.
+
+### The non-negotiable invariants (what "enforced" means in Option B)
+
+These are the rules `LlmManagerService` applies to every orchestrator proposal. They are the actual specification of policy — everything else is configuration inside them. If an invariant below is ever bypassable by an orchestrator, that's a security bug in AAOSP, not a feature.
+
+1. **Caller permissions dominate.** An orchestrator cannot reach an MCP tool the user has not granted to the orchestrator's UID. Framework intersects the orchestrator's proposed allowlist with the granted set; only the intersection is visible to the model.
+2. **Write-intent tools are HITL.** Tools with `mcpRequiresConfirmation="true"` always gate through `ConsentGate`. Orchestrator proposals can make consent stricter (force per-call where session would apply) but can never skip the gate.
+3. **`SCOPE_FOREVER` auto-downgrade on write-intent.** Already enforced in v0.5. Carries forward unchanged.
+4. **All tool invocations go through `dispatchOneTool`.** Orchestrators never get raw Binder access to `IMcpToolProvider`. Dispatch is the audit seam; bypassing it bypasses audit, which is not allowed.
+5. **Audit log is unconditional.** Every invocation writes a row (args, result status, latency, decision). Orchestrator proposals cannot disable it.
+6. **Framework-owned system-prompt sections are immutable.** Safety preamble, grounding rules, tool-block format, and any future enforced scaffolding live in framework code and are concatenated with the orchestrator's proposed prompt, not replaced by it.
+7. **Model selection is advisory.** Orchestrator model preference is a hint. Framework may refuse based on current state; if it refuses, behavior falls back to whatever model is loaded.
+8. **Iteration cap and timeout are framework-owned.** Orchestrator may tighten them; framework holds the ceiling (today `MAX_CHAIN_ITERATIONS_CAP=8` and the consent/dispatch timeouts).
+
+This list should be the first place a reviewer looks when any orchestrator-facing API changes. If a proposed API would make one of these skippable, the API is wrong.
 
 ### Role flavor — reuse or introduce
 
@@ -738,17 +758,18 @@ Today AgenticLauncher holds `ROLE_HOME` (home screen) *and* is the only app with
 
 They can still live in the same app — the first-cut AgenticLauncher keeps both. But the *roles* are independent: another orchestrator app can take the agent role without touching the launcher, and vice versa. Someone could ship a voice-first agent with no home-screen UI at all.
 
-### Refactor implications — what becomes parameterized
+### Refactor implications — what becomes validated-proposal territory
 
-Moderate refactor, not a rewrite. Concretely:
+Moderate refactor, not a rewrite. Each item below is an orchestrator *proposal* that the framework validates against the invariants above, then applies:
 
-- **`composeSystemPrompt`** — becomes parameterized by the role-holder's declared base prompt + additions. Framework still owns the *shape* (tool block injection, grounding rules, safety preamble — the enforced parts), orchestrator supplies the *voice*.
-- **Tool registry visibility** — `runChain` consults a role-holder-supplied allowlist when assembling the tool block. Framework still owns dispatch and the invariants; orchestrator only narrows, never widens.
-- **Consent UI** — the framework still calls `ConsentGate.awaitDecision()`; the *rendering* of the prompt is delegated via a Binder callback to the role-holder. Default rendering stays in AgenticLauncher.
-- **Tool-call display** — already callback-driven today. The role-holder decides how to render.
+- **`composeSystemPrompt`** — accepts a role-holder-supplied base + additions. Framework concatenates its own safety preamble, grounding rules, and tool-block format (invariant 6). Orchestrator supplies the *voice*; framework supplies the *shape*.
+- **Tool registry visibility** — `runChain` intersects the role-holder's proposed allowlist with the caller's granted set (invariant 1) when assembling the tool block. Proposals that name tools the caller has no grant for are silently dropped.
+- **HITL strictness** — `ConsentGate` accepts a per-tool strictness proposal from the role-holder, then clamps against invariants 2 and 3 before applying.
+- **Consent UI** — framework still calls `ConsentGate.awaitDecision()`; *rendering* the prompt is delegated via a Binder callback to the role-holder. The *decision* is framework-owned (who can confirm, what scope is allowed). Default rendering stays in AgenticLauncher.
+- **Tool-call display** — already callback-driven today. The role-holder decides how to render; the framework still performs dispatch (invariant 4) and writes the audit row (invariant 5).
 - **Session ownership** — sessions become owned by the `(caller-uid, role-holder)` pair, so switching default agent doesn't bleed one agent's history into another. Existing sessions either migrate (explicit user action) or stay attached to the previous role-holder.
 
-Nothing in this list requires tearing out `runChain`. The loop stays where it is; the *inputs* to the loop become role-holder-supplied.
+Nothing in this list requires tearing out `runChain`. The loop stays where it is; the *inputs* become proposals and the invariants become explicit gates in front of the places those inputs are consumed.
 
 ### Open questions (real, not ceremonial)
 
