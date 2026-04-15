@@ -216,6 +216,27 @@ disambiguation UX, but requires extending the JNI callback surface and
 is only meaningful once we have a bigger model generating better
 calibrated logprobs.
 
+### Android App Functions adapter (dual-publish MCP tools as `@AppFunction`)
+
+**Why**: Android 16 ships `androidx.appfunctions` (experimental) — a
+`@AppFunction` Kotlin annotation + `EXECUTE_APP_FUNCTIONS` permission,
+orchestrated by Gemini in the cloud. It overlaps AAOSP's surface
+conceptually but is architecturally inverted (cloud Gemini decides
+when/why to invoke; no on-device LLM, no MCP wire format, no built-in
+HITL or audit). An adapter that auto-exposes registered AAOSP MCP
+tools as `@AppFunction`s on Android 16+ devices means MCP-app authors
+get both surfaces from one manifest block — they aren't forced to
+choose between AAOSP and stock-Android-with-Gemini.
+
+**Sketch**: new `AppFunctionsAdapter` in `LlmManagerService` that
+walks `McpRegistry` and emits the `androidx.appfunctions` XML schema
++ a generated `AppFunctionContext` bridge to `IMcpToolProvider`.
+Manifest still declares `<mcp-server>` only; the adapter generates
+the App Functions side at registration time.
+
+**Depends on**: rebasing the framework fork to Android 16 (currently
+v15). Until then, this is design-only.
+
 ### APEX-updatable model
 
 **Why**: the `.gguf` currently lives in `/product/etc/llm/` which is

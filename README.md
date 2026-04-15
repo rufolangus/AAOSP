@@ -44,6 +44,38 @@ Android already has the pieces. Binder IPC is the fastest inter-process communic
 
 This isn't adding AI to Android. This is Android adapting to the world that already exists.
 
+## Why AAOSP, not just App Functions?
+
+Android 16 ships [`androidx.appfunctions`](https://developer.android.com/ai/appfunctions) (experimental) — a `@AppFunction` annotation that lets apps declare callable functions to the system. Reasonable question: doesn't that solve this?
+
+It doesn't, because the architectures are inverted:
+
+| | App Functions (Android 16+) | AAOSP |
+|---|---|---|
+| Who runs the model? | Cloud Gemini (or whatever Google picks next) | On-device LLM, system service |
+| Who decides when a function fires? | Google's orchestrator | The device — your launcher, your agent loop |
+| Wire format | Android-only `@AppFunction` Kotlin annotation | MCP — same protocol Claude, GPT, every desktop agent speaks |
+| Trust boundary | Defined by Google + per-app opt-in to `EXECUTE_APP_FUNCTIONS` | Defined by the device owner — HITL consent + audit log built into the runtime |
+| Where your data goes | Wherever Gemini processes it | Stays on the device |
+| Who has to ship it | Google decides which devices, which release | Apache 2.0 fork — anyone can ship it |
+
+App Functions is *Google's* agentic Android. AAOSP is agentic Android *as a platform capability* — same architectural tier as `LocationManager`, owned by whoever ships the OS, not by whoever runs the cloud model.
+
+The two aren't mutually exclusive. The AAOSP roadmap includes an **App Functions adapter** so apps that declare `<mcp-server>` get `@AppFunction` exposure for free on Android 16+ — one manifest block, both surfaces. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+### Same playing field for OEMs
+
+Today, agentic Android on stock means licensing Gemini + AICore. Google reserves the good runtime (system-tier on-device model, orchestration, App Functions glue) for Pixel and licensed integrations. Every other OEM either takes Google's terms — Gemini's release cadence, Google's data flow, Google's model choices — or ships nothing competitive.
+
+AAOSP changes the math:
+
+- **Same capability tier as AICore**: on-device LLM as a system service, Binder-addressable, registered MCP tools, agent loop in `system_server`.
+- **No Gemini license, no per-device fees, no telemetry to Mountain View.** Apache 2.0, in your fork, on your schedule.
+- **OEM controls the substance**: which model, which system prompt, which consent UX, which audit policy, which apps can register tools.
+- **Users' on-device AI activity stays on the device.** Your privacy story, not Google's.
+
+The pitch to OEMs isn't "compete with Google" — it's "ship AI at the same architectural tier Google ships it, without renting the runtime from Google." Same playing field.
+
 ## Who this is for
 
 The interface is shifting from screens to agents. MCP is the rare case where the protocol is winning before any one vendor has captured the new surface. AAOSP is the substrate that lets each constituency stay first-class:
