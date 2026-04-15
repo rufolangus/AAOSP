@@ -1,16 +1,16 @@
 # Agentic Android Open Source Project (AAOSP)
 
-**Android's natural evolution for the agentic era.**
+**Android's agentic era, without renting the runtime from Google.**
 
-MCP (Model Context Protocol) is the standard. Every major AI platform — Claude, GPT, Gemini — speaks it. Every tool, every integration, every workflow is converging on MCP as the universal interface between AI and software.
+An open-source AOSP fork where the LLM lives in `system_server`, apps declare MCP tools in their manifest, and the device owner — not a cloud orchestrator — decides what fires when.
 
-Android has always been a platform built on protocols. Intents, Content Providers, Broadcast Receivers — these were the right abstractions for the app era. MCP is the right abstraction for the agentic era.
+MCP (Model Context Protocol) is the standard. Every major AI platform — Claude, GPT, Gemini — speaks it. Every tool, every integration, every workflow is converging on MCP as the universal interface between AI and software. Android has always been a platform built on protocols: Intents, Content Providers, Broadcast Receivers were the right abstractions for the app era. MCP is the right abstraction for the agentic era.
 
-AAOSP makes MCP a first-class citizen in Android. Apps declare tools. The OS runs the model. The user just talks.
+AAOSP makes MCP a first-class citizen in Android. **Apps declare tools. The OS runs the model. The user just talks.** No cloud, no orchestrator owned by anyone but you.
 
 [![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/7493fe15dee9463c9626c170e1e44e92-ed91244c8ecd4aeb.gif)](https://www.loom.com/share/7493fe15dee9463c9626c170e1e44e92)
 
-*The thumbnail above is a GIF of the first few seconds (prompt submitted, "Thinking…" indicator) — **click through to watch the full demo**. In the linked video, Qwen 2.5 0.5B emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips back through a second LLM pass, and the answer renders in the chat UI alongside an attribution card showing the Contacts app icon. (Demo predates v0.5; a refreshed recording with 3B + 2 MCPs + HITL write flow is queued.)*
+*The thumbnail above is a GIF of the first few seconds — **click through to watch the full demo.** Qwen 2.5 emits a `<tool_call>` for `search_contacts`, AAOSP dispatches to `ContactsMcp` via `IMcpToolProvider.invokeTool()`, the result round-trips through a second LLM pass, and the answer renders in the chat UI with an attribution card showing the Contacts app icon. Recorded on v0.3; a refreshed v0.6 demo with 3B + cross-MCP chaining + HITL write flow is queued.*
 
 **Current release: `v0.5`** (2026-04-14). Ships the agentic loop with
 per-tool HITL consent, audit log, and cross-MCP chaining across **two**
@@ -26,9 +26,11 @@ See [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the full v0.5 delta,
 
 ## What This Is
 
+**AAOSP is to AICore what AOSP is to GMS** — the same architectural tier as Google's on-device AI runtime, but Apache 2.0, in your fork, on your schedule.
+
 An AOSP fork that adds three things:
 
-1. **An LLM that runs as a system service** — like LocationManager or NotificationManager, but for intelligence. Local inference via llama.cpp. No cloud. No API keys. No data leaving the device.
+1. **An LLM that runs as a system service** — like LocationManager or NotificationManager, but for intelligence. Local inference via llama.cpp inside `system_server`. No cloud. No API keys. No data leaving the device.
 
 2. **MCP in the manifest** — apps declare their capabilities as MCP tools in `AndroidManifest.xml`, the same way they've always declared intents and permissions. The OS indexes them at install time. The LLM discovers and uses them at runtime.
 
@@ -54,12 +56,15 @@ It doesn't, because the architectures are inverted:
 |---|---|---|
 | Who runs the model? | Cloud Gemini (or whatever Google picks next) | On-device LLM, system service |
 | Who decides when a function fires? | Google's orchestrator | The device — your launcher, your agent loop |
-| Wire format | Android-only `@AppFunction` Kotlin annotation | MCP — same protocol Claude, GPT, every desktop agent speaks |
+| Who decides which app gets the agent's traffic? | Google's ranker | The user's launcher / chosen agent |
 | Trust boundary | Defined by Google + per-app opt-in to `EXECUTE_APP_FUNCTIONS` | Defined by the device owner — HITL consent + audit log built into the runtime |
 | Where your data goes | Wherever Gemini processes it | Stays on the device |
-| Who has to ship it | Google decides which devices, which release | Apache 2.0 fork — anyone can ship it |
+| Who has to ship it | Google decides which devices, which release | Apache 2.0 fork — any OEM can ship it |
+| Source-available all the way down | AOSP yes, AICore no, Gemini Nano weights no, orchestrator no | Yes — kernel to launcher, every layer Apache 2.0 |
 
-App Functions is *Google's* agentic Android. AAOSP is agentic Android *as a platform capability* — same architectural tier as `LocationManager`, owned by whoever ships the OS, not by whoever runs the cloud model.
+**Open all the way down.** AOSP itself is open. GMS isn't. AICore isn't. Gemini Nano weights aren't. The App Functions orchestrator isn't. AAOSP is the only agentic Android stack that's Apache 2.0 from the kernel to the launcher — model swappable, prompts inspectable, consent UX in your hands. The only "closed" piece is the model weights, and you pick those.
+
+App Functions is *Google's* agentic Android. AAOSP is agentic Android *as a platform capability* — same tier as `LocationManager`, owned by whoever ships the OS, not by whoever runs the cloud model. App Functions also makes Google the new gatekeeper for agent-driven app discovery: their orchestrator decides which app's function answers a user's intent. AAOSP keeps that decision on the device.
 
 The two aren't mutually exclusive. The AAOSP roadmap includes an **App Functions adapter** so apps that declare `<mcp-server>` get `@AppFunction` exposure for free on Android 16+ — one manifest block, both surfaces. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -75,6 +80,17 @@ AAOSP changes the math:
 - **Users' on-device AI activity stays on the device.** Your privacy story, not Google's.
 
 The pitch to OEMs isn't "compete with Google" — it's "ship AI at the same architectural tier Google ships it, without renting the runtime from Google." Same playing field.
+
+The regulatory wind blows the same direction. EU DMA, US state privacy laws, China's data-residency rules, India's DPDP — all push toward on-device inference and user-controlled trust boundaries. App Functions assumes Google in the loop. AAOSP doesn't. OEMs that want to ship globally without re-architecting per jurisdiction get there faster on AAOSP.
+
+## What AAOSP won't do
+
+Positioning is also what you refuse. AAOSP will not:
+
+- **Phone home.** No telemetry to AAOSP, no telemetry to Google, no telemetry to a model vendor. Inference, tool-calls, and audit logs stay on the device.
+- **Require a model license.** The runtime is model-agnostic — Qwen today, swap to Llama, Mistral, Gemma, anything llama.cpp can load. No exclusivity, no per-device fee.
+- **Put a third party between the user and their apps.** No cloud orchestrator decides which app answers a user's request. The launcher does. The user does.
+- **Gate apps behind a vendor's allowlist.** Any app with `<mcp-server>` in its manifest is reachable. No SDK, no review queue, no developer program.
 
 ## Who this is for
 
