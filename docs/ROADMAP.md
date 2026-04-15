@@ -236,15 +236,7 @@ calibrated logprobs.
 
 ### Android App Functions adapter (dual-publish MCP tools as `@AppFunction`)
 
-**Why**: Android 16 ships `androidx.appfunctions` (experimental) — a
-`@AppFunction` Kotlin annotation + `EXECUTE_APP_FUNCTIONS` permission,
-orchestrated by Gemini in the cloud. It overlaps AAOSP's surface
-conceptually but is architecturally inverted (cloud Gemini decides
-when/why to invoke; no on-device LLM, no MCP wire format, no built-in
-HITL or audit). An adapter that auto-exposes registered AAOSP MCP
-tools as `@AppFunction`s on Android 16+ devices means MCP-app authors
-get both surfaces from one manifest block — they aren't forced to
-choose between AAOSP and stock-Android-with-Gemini.
+**Why**: Android 16 ships [`android.app.appfunctions.*`](https://developer.android.com/ai/appfunctions) as a platform feature plus `androidx.appfunctions` as a Jetpack library — on-device Binder dispatch with an `@AppFunction` Kotlin annotation and an `EXECUTE_APP_FUNCTIONS` signature-level permission. Google explicitly positions this as *"the mobile equivalent of tools within the Model Context Protocol (MCP)"* — it's the same architectural layer where AAOSP already does dispatch via our MCP manifest + `IMcpToolProvider`. App Functions is *complementary* to AAOSP, not a competitor; what Google keeps closed (and what AAOSP actually replaces) is the runtime layer above it — AICore, Gemini Nano, Google Assistant. An adapter that auto-exposes registered AAOSP MCP tools as `@AppFunction`s means apps get both dispatch surfaces from one `<mcp-server>` manifest block — reachable from AAOSP's orchestrator *and* from any Android 16+ caller holding `EXECUTE_APP_FUNCTIONS` (including Google Assistant if GMS is present).
 
 **Sketch**: new `AppFunctionsAdapter` in `LlmManagerService` that
 walks `McpRegistry` and emits the `androidx.appfunctions` XML schema

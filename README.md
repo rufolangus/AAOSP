@@ -1,12 +1,12 @@
 # Agentic Android Open Source Project (AAOSP)
 
-**Android's agentic era, without renting the runtime from Google.**
+**The open AICore. An AOSP fork with an on-device LLM as a system service, no Gemini license required.**
 
-An open-source AOSP fork where the LLM lives in `system_server`, apps declare MCP tools in their manifest, and the device owner — not a cloud orchestrator — decides what fires when.
+An open-source AOSP fork where the LLM runs inside `system_server`, apps declare MCP tools in their manifest, and the *device owner* — not Google — picks the model, the orchestrator, and where the data goes.
 
 MCP (Model Context Protocol) is the standard. Every major AI platform — Claude, GPT, Gemini — speaks it. Every tool, every integration, every workflow is converging on MCP as the universal interface between AI and software. Android has always been a platform built on protocols: Intents, Content Providers, Broadcast Receivers were the right abstractions for the app era. MCP is the right abstraction for the agentic era.
 
-AAOSP makes MCP a first-class citizen in Android. **Apps declare tools. The OS runs the model. The user just talks.** No cloud, no orchestrator owned by anyone but you.
+AAOSP makes MCP a first-class citizen in Android. **Apps declare tools. The OS runs the model. The user just talks.** No Google license, no closed model, no orchestrator you don't control.
 
 [![AAOSP demo — "what's John's number?"](https://cdn.loom.com/sessions/thumbnails/7493fe15dee9463c9626c170e1e44e92-ed91244c8ecd4aeb.gif)](https://www.loom.com/share/7493fe15dee9463c9626c170e1e44e92)
 
@@ -46,57 +46,83 @@ Android already has the pieces. Binder IPC is the fastest inter-process communic
 
 This isn't adding AI to Android. This is Android adapting to the world that already exists.
 
-## Why AAOSP, not just App Functions?
+## How AAOSP relates to App Functions, AICore, and Google Assistant
 
-Android 16 ships [`androidx.appfunctions`](https://developer.android.com/ai/appfunctions) (experimental) — a `@AppFunction` annotation that lets apps declare callable functions to the system. Reasonable question: doesn't that solve this?
+This framing gets misread easily, so let's be precise about what each thing is and where AAOSP actually sits.
 
-It doesn't, because the architectures are inverted:
+### Android 16 agentic stack, by layer
 
-| | App Functions (Android 16+) | AAOSP |
-|---|---|---|
-| Who runs the model? | Cloud Gemini (or whatever Google picks next) | On-device LLM, system service |
-| Who decides when a function fires? | Google's orchestrator | The device — your launcher, your agent loop |
-| Who decides which app gets the agent's traffic? | Google's ranker | The user's launcher / chosen agent |
-| Trust boundary | Defined by Google + per-app opt-in to `EXECUTE_APP_FUNCTIONS` | Defined by the device owner — HITL consent + audit log built into the runtime |
-| Where your data goes | Wherever Gemini processes it | Stays on the device |
-| Who has to ship it | Google decides which devices, which release | Apache 2.0 fork — any OEM can ship it |
-| Source-available all the way down | AOSP yes, AICore no, Gemini Nano weights no, orchestrator no | Yes — kernel to launcher, every layer Apache 2.0 |
+| Layer | What ships on stock Android 16 | License / openness | AAOSP equivalent |
+|---|---|---|---|
+| **Tool invocation plumbing** | App Functions (`android.app.appfunctions.*` + `androidx.appfunctions`) | ✅ Apache 2.0, in AOSP | MCP manifest + `IMcpToolProvider` AIDL (adapter to App Functions roadmapped) |
+| **On-device LLM runtime** | [AICore](https://developer.android.com/ai/aicore) system service wrapping Gemini Nano | ❌ Closed; GMS-only; not in AOSP | `LlmManagerService` + llama.cpp (Apache 2.0) |
+| **Model weights** | Gemini Nano | ❌ Closed; Google-managed distribution; not swappable by OEMs or users | Qwen 2.5 by default; swappable to any llama.cpp-compatible GGUF |
+| **Reference orchestrator / caller** | Google Assistant (the canonical `EXECUTE_APP_FUNCTIONS` holder) | ❌ Closed; GMS-only | AgenticLauncher (Apache 2.0) |
 
-**Open all the way down.** AOSP itself is open. GMS isn't. AICore isn't. Gemini Nano weights aren't. The App Functions orchestrator isn't. AAOSP is the only agentic Android stack that's Apache 2.0 from the kernel to the launcher — model swappable, prompts inspectable, consent UX in your hands. The only "closed" piece is the model weights, and you pick those.
+### App Functions is not the competitor — AICore is
 
-App Functions is *Google's* agentic Android. AAOSP is agentic Android *as a platform capability* — same tier as `LocationManager`, owned by whoever ships the OS, not by whoever runs the cloud model. App Functions also makes Google the new gatekeeper for agent-driven app discovery: their orchestrator decides which app's function answers a user's intent. AAOSP keeps that decision on the device.
+App Functions is *invocation plumbing*: a Binder-dispatch layer with an `@AppFunction` annotation and an `EXECUTE_APP_FUNCTIONS` permission. It does on-device dispatch (no cloud required for invocation) and it's Apache 2.0 in AOSP — which is good. Google's own docs call App Functions *"the mobile equivalent of tools within the Model Context Protocol (MCP)."*
 
-The two aren't mutually exclusive. The AAOSP roadmap includes an **App Functions adapter** so apps that declare `<mcp-server>` get `@AppFunction` exposure for free on Android 16+ — one manifest block, both surfaces. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+This is the **same architectural layer** where AAOSP already does dispatch (via our MCP manifest + `IMcpToolProvider`). App Functions is **not a competitor to AAOSP** — it's complementary, and our roadmap already has an adapter so a `<mcp-server>` declaration auto-exposes as `@AppFunction` on Android 16+ devices.
+
+**The piece Google keeps closed** is the runtime layer above the invocation: **AICore** — the system service that actually loads and runs Gemini Nano on-device — plus Gemini Nano's weights, plus the reference orchestrator (Google Assistant). Per Google's own documentation, AICore is isolated as a system component with "limited exceptions for specific system packages." It is not in AOSP. It is not swappable. OEMs can use App Functions plumbing without GMS, but if they want the actual agentic runtime — the thing that decides what `@AppFunction` to call — they have to license Gemini Nano through AICore, or build their own.
+
+**AAOSP is the open alternative to AICore + Gemini Nano + Google Assistant.** Not an alternative to App Functions — we use that layer (or our MCP-shaped equivalent, and soon both).
+
+### What that means concretely
+
+| | Vanilla AOSP Android 16 (no GMS) | Stock Android 16 (with GMS) | AAOSP |
+|---|---|---|---|
+| App Functions plumbing | ✅ present | ✅ present | ✅ present (MCP today, `@AppFunction` adapter roadmapped) |
+| On-device LLM runtime | ❌ not shipped | ✅ AICore (closed) | ✅ `LlmManagerService` (open) |
+| Model included | ❌ none | ✅ Gemini Nano (closed, non-swappable) | ✅ Qwen 2.5 (open, swappable) |
+| Reference agent/orchestrator | ❌ none | ✅ Google Assistant (closed) | ✅ AgenticLauncher (open) |
+| Platform-level HITL + audit | ❌ not included | ❌ not included (consent delegated to caller) | ✅ `ConsentGate` + `HitlConsentStore` |
+| OEM can ship without GMS | Plumbing only; no agent | N/A (GMS is the point) | ✅ fully — zero Google components |
+
+On pure AOSP Android 16, you get invocation plumbing and nothing to plug into it. With GMS, you get AICore + Nano + Assistant — the complete agentic runtime, but closed and Google-controlled. **AAOSP is the third option: complete, open, zero GMS.**
+
+### Apache 2.0 all the way down — what's actually open
+
+AAOSP's claim is precise, not sweeping:
+
+- **Platform-level invocation plumbing** — Apache 2.0 in AAOSP. Same as stock AOSP.
+- **The LLM runtime** — Apache 2.0 in AAOSP (`LlmManagerService`). Closed in stock Android (AICore).
+- **The reference agent** — Apache 2.0 in AAOSP (AgenticLauncher). Closed in stock Android (Google Assistant).
+- **The model weights** — third-party open weights in AAOSP (Qwen 2.5 Apache 2.0). Closed in stock Android (Gemini Nano).
+
+The entire **reference stack** is open in AAOSP. In stock Android, the invocation-plumbing *spec* is open but the *stack that uses it* is closed. That's the honest difference, and it's still the pitch.
 
 ### Same playing field for OEMs
 
-Today, agentic Android on stock means licensing Gemini + AICore. Google reserves the good runtime (system-tier on-device model, orchestration, App Functions glue) for Pixel and licensed integrations. Every other OEM either takes Google's terms — Gemini's release cadence, Google's data flow, Google's model choices — or ships nothing competitive.
+Today, agentic Android on stock means licensing **AICore** (the system service) plus Gemini Nano (the weights) — both GMS-only, both Google-controlled. App Functions alone doesn't give an OEM an agentic runtime; it gives them dispatch plumbing with nothing on the other end. Every non-Pixel OEM either takes Google's terms — Gemini's release cadence, Google's data flow, non-swappable model choice — or ships nothing competitive at the runtime layer.
 
 AAOSP changes the math:
 
-- **Same capability tier as AICore**: on-device LLM as a system service, Binder-addressable, registered MCP tools, agent loop in `system_server`.
-- **No Gemini license, no per-device fees, no telemetry to Mountain View.** Apache 2.0, in your fork, on your schedule.
-- **OEM controls the substance**: which model, which system prompt, which consent UX, which audit policy, which apps can register tools.
+- **Drop-in replacement for AICore at the runtime tier**: on-device LLM as a system service, Binder-addressable, registered MCP tools, agent loop in `system_server`.
+- **No AICore license, no Gemini distribution agreement, no per-device fees, no telemetry to Mountain View.** Apache 2.0, in your fork, on your schedule.
+- **OEM picks the model.** Qwen today, swap to Llama, Mistral, Gemma, anything llama.cpp can load. In the AICore world, Google picks.
+- **OEM controls the substance**: which system prompt, which consent UX, which audit policy, which apps can register tools.
 - **Users' on-device AI activity stays on the device.** Your privacy story, not Google's.
 
-The pitch to OEMs isn't "compete with Google" — it's "ship AI at the same architectural tier Google ships it, without renting the runtime from Google." Same playing field.
+The pitch to OEMs isn't *"compete with Google"* — it's *"ship the AICore tier without AICore."* Same architectural slot, open reference stack, zero GMS.
 
-The regulatory wind blows the same direction. EU DMA, US state privacy laws, China's data-residency rules, India's DPDP — all push toward on-device inference and user-controlled trust boundaries. App Functions assumes Google in the loop. AAOSP doesn't. OEMs that want to ship globally without re-architecting per jurisdiction get there faster on AAOSP.
+The regulatory wind blows the same direction. EU DMA, US state privacy laws, China's data-residency rules, India's DPDP — all push toward on-device inference, user-controlled trust boundaries, and reduced dependence on US-cloud-provider lock-in. AICore keeps model, distribution, and update cadence under Google. AAOSP keeps them under the OEM and the device owner. OEMs that want to ship globally without re-architecting per jurisdiction get there faster on AAOSP.
 
 ## What AAOSP won't do
 
 Positioning is also what you refuse. AAOSP will not:
 
 - **Phone home.** No telemetry to AAOSP, no telemetry to Google, no telemetry to a model vendor. Inference, tool-calls, and audit logs stay on the device.
-- **Require a model license.** The runtime is model-agnostic — Qwen today, swap to Llama, Mistral, Gemma, anything llama.cpp can load. No exclusivity, no per-device fee.
-- **Put a third party between the user and their apps.** No cloud orchestrator decides which app answers a user's request. The launcher does. The user does.
+- **Require a model license.** The runtime is model-agnostic — Qwen today, swap to Llama, Mistral, Gemma, anything llama.cpp can load. No exclusivity, no per-device fee. AICore does not let OEMs or users swap the model; AAOSP does.
+- **Put a third party between the user and their apps.** No closed orchestrator decides which app answers a user's request. The launcher does. The user does. The orchestrator is user-replaceable, same as a default launcher or default browser.
 - **Gate apps behind a vendor's allowlist.** Any app with `<mcp-server>` in its manifest is reachable. No SDK, no review queue, no developer program.
 
 ## Who this is for
 
 The interface is shifting from screens to agents. MCP is the rare case where the protocol is winning before any one vendor has captured the new surface. AAOSP is the substrate that lets each constituency stay first-class:
 
-- **OEMs** — phone makers (Samsung, Xiaomi, Motorola, OnePlus, Nothing) and vertical-market Android device makers (Toast, Square, Clover, Verifone for POS; Zebra, Honeywell, Datalogic for retail/warehouse handhelds; Sonim for rugged) — ship an LLM-ready OS without betting on their own model or licensing Gemini.
+- **OEMs** — phone makers (Samsung, Xiaomi, Motorola, OnePlus, Nothing) and vertical-market Android device makers (Toast, Square, Clover, Verifone for POS; Zebra, Honeywell, Datalogic for retail/warehouse handhelds; Sonim for rugged) — get the AICore tier without licensing AICore: on-device LLM as a system service, their choice of model, zero GMS dependency.
 - **App developers** — anyone shipping an Android app, from a solo indie to Meta — become reachable by any agent via one manifest block. No SDK, no per-vendor integration.
 - **LLM vendors** (Meta, Mistral, Alibaba, DeepSeek, anyone with a GGUF) compete on model quality, not integration surface area. Swap the model, the tool surface stays.
 - **Users** get one assistant, every app visible to it, data stays local.

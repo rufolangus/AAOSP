@@ -650,7 +650,7 @@ The cleanest framing: **"pick your model, pick your assistant — they're not th
 - **LLM** — device-level. OEM bakes the default; eventually swappable via pluggable models (S4 territory, gated independently).
 - **Orchestrator** — user-level. The agent app that holds the role shapes *the loop around the model* — what the system prompt says, which tools are in scope, how consent is surfaced, what the chat / voice UI looks like. It does not change what the model is.
 
-Strategically this is a claim App Functions cannot make: Google picks the model *and* the orchestrator, bundled. AAOSP letting both be chosen, independently, is a positioning surface we currently do not use.
+Strategically this is a claim the stock Android 16 agentic stack (AICore + Gemini Nano + Google Assistant) cannot make: on that stack, Google picks the model *and* the orchestrator, bundled and non-swappable. AAOSP letting both be chosen, independently and openly, is a positioning surface we currently do not use.
 
 ### Where orchestration lives today (so we know what would change)
 
