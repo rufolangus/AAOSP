@@ -80,10 +80,9 @@ The pitch to OEMs isn't "compete with Google" — it's "ship AI at the same arch
 
 The interface is shifting from screens to agents. MCP is the rare case where the protocol is winning before any one vendor has captured the new surface. AAOSP is the substrate that lets each constituency stay first-class:
 
-- **OEMs** ship an LLM-ready OS without betting on their own model.
-- **App developers** become reachable by any agent via one manifest block. No SDK.
-- **Enterprise software (Square, Toast, Epic, ServiceNow)** expose tools to on-device agents without routing customer data through a third-party model.
-- **LLM vendors** compete on model quality, not integration surface area.
+- **OEMs** — phone makers (Samsung, Xiaomi, Motorola, OnePlus, Nothing) and vertical-market Android device makers (Toast, Square, Clover, Verifone for POS; Zebra, Honeywell, Datalogic for retail/warehouse handhelds; Sonim for rugged) — ship an LLM-ready OS without betting on their own model or licensing Gemini.
+- **App developers** — anyone shipping an Android app, from a solo indie to Meta — become reachable by any agent via one manifest block. No SDK, no per-vendor integration.
+- **LLM vendors** (Meta, Mistral, Alibaba, DeepSeek, anyone with a GGUF) compete on model quality, not integration surface area. Swap the model, the tool surface stays.
 - **Users** get one assistant, every app visible to it, data stays local.
 
 ## Architecture
