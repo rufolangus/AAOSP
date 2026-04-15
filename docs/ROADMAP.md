@@ -216,6 +216,10 @@ disambiguation UX, but requires extending the JNI callback surface and
 is only meaningful once we have a bigger model generating better
 calibrated logprobs.
 
+### User-grantable `SUBMIT_LLM_REQUEST` and `BIND_LLM_MCP_SERVICE`
+
+**Why**: Both grants are `signature|privileged` today. Opening either to user-grant is a fundamental change in AAOSP's trust posture, not a phased rollout. The trade space is mapped in [`DESIGN_NOTES.md` § "Opening up `SUBMIT_LLM_REQUEST` and `BIND_LLM_MCP_SERVICE`"](./DESIGN_NOTES.md). No decision yet — read the design note before proposing implementation.
+
 ### Android App Functions adapter (dual-publish MCP tools as `@AppFunction`)
 
 **Why**: Android 16 ships `androidx.appfunctions` (experimental) — a

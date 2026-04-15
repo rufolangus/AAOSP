@@ -451,3 +451,56 @@ ROADMAP), sub-agent design (above), and the consent-model decision
 about plan-level vs task-level HITL. Build order sequence:
 `LlmSessionStore` → sub-agents (or rejection thereof) → task
 tracking. Attempting earlier invites rework.
+
+---
+
+## Opening up `SUBMIT_LLM_REQUEST` and `BIND_LLM_MCP_SERVICE`
+
+**Status: open design question, no decision, no implementation queued.** Both grants are `signature|privileged` today; that's load-bearing for the current trust story. This note maps the scenario space so the trade-off is visible before any code happens. If you arrive here intending to implement: don't, until the question is resolved.
+
+### The two grants in question
+
+- **`SUBMIT_LLM_REQUEST`** — who can ask the system LLM to do work. Today: launcher only.
+- **`BIND_LLM_MCP_SERVICE`** — who the system can bind to as an MCP tool provider. Today: platform-signed apps + `/system_ext/priv-app/`.
+
+These are independent axes. Opening one does not require opening the other. Combined with model provenance, they generate distinct snapshots:
+
+### Scenario map
+
+| | S0 status quo | S1 open tools | S2 open submitters | S3 both | S4 + apps bring models |
+|---|---|---|---|---|---|
+| Who can submit prompts? | Launcher only | Launcher only | Any user-granted app | Any user-granted app | Any user-granted app |
+| Who can provide tools? | Platform-signed only | Any user-enabled app | Platform-signed only | Any user-enabled app | Any user-enabled app |
+| Where models come from | OS-baked | OS-baked | OS-baked | OS-baked | OS-baked + app-bundled |
+| What new attack surface opens | None | Tool-description injection; tool-name squatting; result poisoning | Compute drain; permission-laundering via LLM; prompt-injection-as-tool-exfil | S1 + S2 multiplied (malicious app provides AND consumes) | Adversarial weights; eviction-policy abuse; memory pressure |
+| What's still safe | Everything | Only the launcher submits, so no app can secretly invoke the LLM | Tools come from trusted code, so the LLM isn't reading attacker-controlled descriptions or returning attacker-controlled data | The model itself; the OS still controls inference | The OS-baked model is still always available as fallback |
+| Who benefits | OEM, AAOSP team, users via curated experience | App developers (reachable by the agent); users (more capabilities); ecosystem | App developers (drop bundled llama.cpp + GGUF); users (apps stop phoning home, app size drops); strategic (many possible orchestrators) | Full ecosystem unlock | Specialized small-model use cases (embedding, classification, domain-tuned 1B); research deployment |
+| Cost of staying here | AAOSP is a single curated agent product, not a platform. Real ecosystem can't grow. | Submitter side stays Google-shaped (one orchestrator). | Tool side stays curated; ecosystem of tools doesn't grow. | None — this is the platform endpoint short of S4. | Without it, only OS-shipped models exist. |
+
+### The invariant any opening would have to preserve
+
+**The LLM cannot be used as a permission-laundering proxy.** An app without `READ_CONTACTS` must not be able to ask the system LLM to call `ContactsMcp.search_contacts` and read the result back through the chat response. The caller's permissions must dominate the LLM's tool reach. Easy to state, subtle to implement (especially across MCP-tool chaining where tool A's output becomes tool B's input). Any path that opens `SUBMIT_LLM_REQUEST` without enforcing this is a regression on the current trust posture.
+
+### What we lose by opening anything
+
+The S0 row of "what new attack surface opens" is **None**. That is genuinely the position today. Opening these grants is not a phased rollout of agreed work — it is a fundamental change in who can interact with the on-device LLM, and the safety story trades a clean per-platform-signature gate for a per-app user-grant mechanism that has its own failure modes (permission fatigue, dialog learning, over-grant).
+
+### What we'd need to know before deciding
+
+- **Trust UX metaphor.** "Share location" and "Use camera" carry meaning users already understand. "Submit prompts to AI" and "Provide tools to AI" do not. We don't have the metaphor yet. Implementing the grants without it ships an Allow-button users learn to ignore.
+- **Threat model for adversarial tool descriptions.** S1 introduces attacker-controlled text into the system prompt. This is an open research problem in the broader MCP / agentic-AI space. AAOSP is unlikely to solve it; we need a position on what defense-in-depth is acceptable.
+- **Sandboxing per submitter.** S2 needs each `SUBMIT_LLM_REQUEST` caller to see only its own MCP tools + explicitly user-granted others. The matrix grows fast (N submitters × M tool providers × per-pair grants); UX cost might exceed user benefit.
+- **Eviction policy with realistic devices.** S4 is academically interesting but probably impractical on 8 GB devices. Need real numbers on swap latency and memory pressure before committing.
+- **Telemetry posture.** Once OEMs ship AAOSP with these grants open, will they be tempted to add usage telemetry to debug issues? Need a stated norm before the first OEM ships.
+
+### Other axes worth naming
+
+- **Many orchestrators vs one chat surface.** Even under S2, AAOSP could mandate that the user-facing chat is still the launcher; apps just call the LLM in the background. That's a different shape than "every app has its own agent UI."
+- **Per-pair grants vs blanket grants.** Should `ContactsMcp` be visible to every submitter app, or does each (submitter × tool-provider) pair need explicit user grant? The blanket form is usable; the per-pair form is honest. Probably the right answer is in between (default deny for cross-app, per-app override).
+- **Inference attribution and fairness.** Who pays the compute cost? Foreground-priority is the easy answer; background AI work (transcription, indexing) breaks it.
+
+### Why parked
+
+The two questions that block deciding — *is there a credible defense against adversarial tool descriptions?* and *is there a UX metaphor users will actually grok for these grants?* — have no clear path to "yes" today. Both are upstream of any implementation work. Opening these grants without a position on either ships the worst version of S1 / S2: an Allow-button users tap reflexively, on a model that trusts everything it reads.
+
+The condition that should reopen this note: a credible defense story on adversarial tool descriptions (likely a combination of fenced sections, prompt structure, and runtime guards), or an external proof point (someone else solves it well enough that we can reuse the design).
