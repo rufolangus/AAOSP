@@ -29,6 +29,20 @@ stronger with more demos — obvious next candidates: `MessagesMcp`
 Each is a self-contained app with a manifest block and a service — no
 framework changes required. Good for recruiting contributors.
 
+### `fire_intent` built-in tool — the "Bash of Android"
+
+**Why**: today AAOSP synthesizes one built-in tool (`launch_app`). Generalizing it to `fire_intent(action, uri, extras)` unlocks *"dial mom"* → `ACTION_DIAL`/`tel:`, *"show 5th Ave on the map"* → `ACTION_VIEW`/`geo:`, *"email John"* → `ACTION_SENDTO`/`mailto:`, and a long tail of per-app deep links — all via Android's existing intent resolver with the existing permission model intact. Highest-leverage single built-in we could ship; most "agent" demos on other platforms are just styled `fire_intent` calls.
+
+**Design note**: full surface + trust reasoning in [`DESIGN_NOTES.md` § "Built-in tool surface"](./DESIGN_NOTES.md). `fire_intent` is always HITL-gated at call time, with the resolved target app + intent shown; caller permissions dominate.
+
+### `get_device_state` built-in tool
+
+**Why**: cheap, low-risk, grounds every answer. Aggregate read of battery level + charging state, network type (wifi/cellular/offline), DND, orientation, timezone, locale — one call returning a small JSON blob instead of six specialized tools. Improves model answers (*"is my phone on wifi?"*, *"am I charging?"*, time-of-day reasoning) at near-zero context cost. Part of the built-in tool surface discussed in [`DESIGN_NOTES.md`](./DESIGN_NOTES.md).
+
+### `set_alarm` / `set_timer` built-in tools
+
+**Why**: *"set a 10 minute timer"* and *"wake me at 7"* are the single most-asked voice-assistant query class on the planet. Both reduce to `AlarmClock.ACTION_SET_TIMER` / `ACTION_SET_ALARM` intents; we could technically do them through `fire_intent` but sugar is worth it for high-frequency verbs. Lands cleanly on top of `fire_intent` infrastructure.
+
 ### Streaming tokens to the launcher
 
 **Why**: `runChain()` currently buffers each native inference pass to

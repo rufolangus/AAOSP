@@ -504,3 +504,265 @@ The S0 row of "what new attack surface opens" is **None**. That is genuinely the
 The two questions that block deciding — *is there a credible defense against adversarial tool descriptions?* and *is there a UX metaphor users will actually grok for these grants?* — have no clear path to "yes" today. Both are upstream of any implementation work. Opening these grants without a position on either ships the worst version of S1 / S2: an Allow-button users tap reflexively, on a model that trusts everything it reads.
 
 The condition that should reopen this note: a credible defense story on adversarial tool descriptions (likely a combination of fenced sections, prompt structure, and runtime guards), or an external proof point (someone else solves it well enough that we can reuse the design).
+
+**Candidate partial resolution.** See "Role-based orchestrators (default agent)" below. A role-based shape — one orchestrator active at a time, user-picked via the same pattern as default launcher / default browser — collapses most S2 threats (compute drain, permission fatigue, trust UX) under a much smaller surface change than opening `SUBMIT_LLM_REQUEST` as an arbitrary runtime permission. If that shape is sufficient, large parts of the grants question above may not need to be answered.
+
+---
+
+## Voice in + voice out (on-device)
+
+**Status: blueprint, not committed.** The pieces exist (Whisper for STT, Piper / Sherpa-ONNX for TTS, Android's `TextToSpeech` as zero-cost fallback), the integration patterns are known (llama.cpp already proves the JNI shape), and the positioning payoff is large. Not queued because v0.6 and v0.7 themes are elsewhere; revisit as its own release theme.
+
+### Why this matters
+
+The text chat UI is engineer-satisfying; voice is regular-person satisfying. Every existing voice assistant — Alexa, pre-2024 Siri, Google Assistant — ships audio to the cloud. Apple's on-device Siri and Google's on-device Assistant are the only counterexamples, and both are platform-locked. **AAOSP voice = on-device Siri, open.** The privacy pitch goes from "MCP geeks care about this" to "anyone who's ever felt weird speaking near an Echo cares about this." A demo where *"what's John's number?"* is spoken and heard back, with `dumpsys llm` proof that audio never left the device, is the moment non-technical people understand why AAOSP is different.
+
+### Two architectural approaches
+
+**Pipeline (STT → LLM → TTS).** Three independent models, each well-trodden. Probably the right first answer.
+
+- **STT:** `whisper.cpp` — same lineage as llama.cpp (GGML, same author, same JNI patterns). `whisper-base.en.q5_1` is ~60 MB and genuinely usable. `whisper-small` ~244 MB handles accents + noise better. Integration cost is similar to our llama.cpp JNI work.
+- **LLM:** Qwen 2.5 3B — already there.
+- **TTS, zero-cost first cut:** Android's built-in `TextToSpeech` API. Works in AOSP today (`SvoxPico` fallback), sounds mechanical, no integration work. Ship this first, upgrade later.
+- **TTS, better:** **Piper** (ONNX neural TTS, ~60 MB, surprisingly good) or **Sherpa-ONNX** voices. Needs JNI; the quality jump is obvious enough to justify a v1.0+ polish pass.
+
+*Pros:* proven models, independently debugged, swappable.
+*Cons:* serial latency (STT → LLM → TTS). User feels *"I said it → silence → it's responding"* rather than natural conversation. Streaming TTS helps but doesn't solve the gap between end-of-speech and end-of-STT.
+
+**Native multimodal.** Qwen 2.5-Omni or Qwen 2-Audio — native audio-in (possibly audio-out), one model handling the pipeline. Lower latency, better conversation flow, larger memory footprint, thinner GGUF support today. **Probably premature.** v1.5+ bet when the ecosystem matures.
+
+### Architecture fit
+
+New system service: `ILlmVoiceService` alongside `ILlmService`, not extension of it. Two reasons:
+
+1. Voice is orthogonal to tool-calling reasoning. `LlmManagerService` should remain focused on one model doing agentic loops. Voice is its own concern with its own lifecycle (streaming audio buffers, partial-transcript updates, TTS playback control).
+2. Lets OEM / enterprise builds swap the voice model (different languages, accessibility-tuned voices, kids' voices) without touching reasoning. Same commercial-extension logic as keeping `InferenceScheduler` pluggable.
+
+Launcher flow: mic button → `ILlmVoiceService.transcribe()` (streaming partial transcripts back to UI for feedback) → full text → existing `ILlmService.submit()` → text response → `ILlmVoiceService.speak()` → audio playback. Waveform animation + push-to-talk UX on the launcher side.
+
+### What to defer
+
+- **Wake-word / always-listening.** DSP-assisted wake word (Porcupine, Snowboy) is a real thing but has huge battery + privacy implications. First voice integration should be push-to-talk only. Always-listening is a v1.0+ question with its own threat model.
+- **Voice barge-in** (user interrupts TTS mid-sentence). Nice-to-have, not first-cut.
+- **Speaker identification** (who's talking). Useful for multi-user households, complex enough to defer.
+
+### Effort estimate
+
+Rough: Whisper JNI integration (1–2 VM sessions, patterns from llama.cpp), Android `TextToSpeech` hookup (0.5 session, free), launcher voice UX (1 session), end-to-end demo recording (0.5 session). Three to five focused sessions for a credible first cut shipping as "Voice, local" release theme.
+
+### Why parked
+
+Not a question of *should we* — we should. Parked because v0.6 and v0.7 themes are decided (demo polish + trust/Settings UI). Reopen as its own release theme — likely v0.8 or v0.9, placed after DynamicToolRegistry lands so the tool-schema budget can absorb voice-triggered flows.
+
+---
+
+## Built-in tool surface — "the primitives of Android"
+
+**Status: blueprint + three near-term candidates.** AAOSP today provides one built-in tool (`launch_app`) synthesized by the framework. Everything else is app-contributed via `<mcp-server>`. This note maps what else *should* be built-in, using Claude Code's tool surface as the mental model.
+
+### The governing principle
+
+Claude Code's built-in tools (Read, Write, Bash, Grep, Glob, WebFetch) are **primitives of the developer computing environment** — universal, hard to replicate well, too low-level to be any one package's concern. App-installable skills are built on top.
+
+For AAOSP the analog is **primitives of the Android computing environment** — things universal to Android as an OS, not domain-specific to any one app. The dividing line:
+
+- **System-level primitives → built into the framework**, provided by `LlmManagerService` via the same synthesis mechanism as `launch_app`.
+- **App-domain tools → MCP apps** (`ContactsMcp`, `CalendarMcp`, future `MessagingMcp` / `NotesMcp` / `FilesMcp`).
+
+`fire_intent` is system-level (it's how every Android app talks to every other). `search_my_email` is domain-level — it belongs in a Gmail or MailMcp app.
+
+### The "Bash of Android" — intent primitives
+
+These are the foundational ones. Most user-facing verbs eventually reduce to these.
+
+- **`fire_intent`** — general `ACTION + URI + extras` dispatch. Generalizes `launch_app`. *"Dial mom"* → `ACTION_DIAL` / `tel:`. *"Show 5th Ave on the map"* → `ACTION_VIEW` / `geo:`. *"Email John at john@x.com"* → `ACTION_SENDTO` / `mailto:`. This is the Bash of Android — enormous leverage, corresponding trust weight. Every `fire_intent` call must resolve through the standard Android intent resolver (caller's permissions + installed apps dominate); always HITL-gated with the resolved intent + target app shown.
+- **`launch_app`** — already built-in; keep as sugar over `fire_intent` for `MAIN/LAUNCHER`.
+- **`open_url`** — sugar for `ACTION_VIEW` on http(s). High-frequency, deserves its own verb.
+- **`share`** — sugar for `ACTION_SEND`. *"Share this article"* flows.
+
+### System state — read-only, low sensitivity
+
+Cheap, useful as context, unambiguous. No HITL needed.
+
+- **`get_device_state`** — aggregate snapshot: battery level + charging, network type (wifi / cellular / offline), DND, orientation, timezone, locale. One call instead of six, so the model doesn't chain-spam reads.
+- **`list_installed_apps`** — discovery surface for the agent. Gives the model a grounded view of what's reachable on *this* device.
+- Skip `get_time` — inject date/time into the system prompt instead.
+
+### System actions — HITL-gated
+
+- **`set_alarm`** / **`set_timer`** — technically `fire_intent` with `AlarmClock.ACTION_SET_*`, but high-frequency enough to warrant sugar. *"Wake me at 7,"* *"10-minute timer"* — the single most-asked voice-assistant query class on Earth.
+- **`toggle_setting`** — wifi, bluetooth, airplane, DND, brightness, flashlight. Each is a one-liner at the device, tedious without a tool.
+- **`set_volume`** — ringer / media / notification channels.
+- **`copy_to_clipboard`** / **`read_clipboard`** — conversational data passing. *"Copy that address."*
+- **`show_notification`** — agent posts reminders / completion messages without needing a host app. Useful for long-running chains.
+
+### Hardware triggers — per-call HITL + runtime permission
+
+- **`take_photo`** — via `fire_intent` to camera.
+- **`record_audio`** — voice notes, future transcription pipelines.
+- **`vibrate`** — haptic confirmation.
+
+### Deliberately *not* built-in (app-domain)
+
+- Email, SMS, messaging → MCP apps (future `MessagingMcp`)
+- Notes, tasks → MCP apps (future `NotesMcp`, `TasksMcp`)
+- File browsing → `FilesMcp`
+- Web search → user's chosen search app (via `fire_intent` + `ACTION_WEB_SEARCH`)
+- Calendar / contacts → existing `ContactsMcp` / `CalendarMcp`
+
+Keeping these out of the framework is intentional: they become contribution targets for the community + differentiation surface for OEMs, rather than baked-in defaults that fossilize. Same reason Android doesn't ship its own mail app implementation in AOSP.
+
+### Edge cases that belong with the open-grants discussion
+
+- **`take_screenshot` + `read_screen`** — accessibility-API screen content. Technically system-level. But *"agent can read anything on your screen at any time"* is a trust cliff — same posture question as the `SUBMIT_LLM_REQUEST` / `BIND_LLM_MCP_SERVICE` opening above. Probably belongs in that same open-design discussion, not shipped independently.
+- **`translate`** / **`summarize_text`** — meta-tools that invoke the LLM on a payload. Self-invocation is conceptually recursive (the agent calling its own model). Useful but not foundational. v1.0+.
+
+### Near-term candidates (promoted to ROADMAP)
+
+Three are small enough, high-leverage enough, and contained enough to land soon without dragging in the open-grants question:
+
+1. **`fire_intent`** — generalizes `launch_app`, unlocks huge demo surface, HITL per call.
+2. **`get_device_state`** — trivial, low-risk, improves every answer's groundedness.
+3. **`set_alarm`** / **`set_timer`** — highest-frequency voice-assistant query class, almost free given intent infrastructure.
+
+The rest of the surface stays parked here until there's reason to pull individual items in.
+
+### Why parked (the rest)
+
+Built-in tool surface grows the system prompt. We already showed in v0.5.1 measurement that the prompt is at ~50% of the 4 K runtime ctx with 2 MCPs + `launch_app`. Adding ten built-ins before `DynamicToolRegistry` lands (v0.8) would push us toward the ceiling for no demo benefit beyond what the three promoted candidates provide. Lazy-load first, grow built-in surface second.
+
+---
+
+## Role-based orchestrators (default agent) — framework runs the loop, orchestrator declares policy
+
+**Status: strong candidate for implementation.** Not decided yet — real open questions listed below — but this shape is closer to "we should build it" than most entries in this file. Framed here as the likely answer to the UX-metaphor gap raised in the open-grants section above; if it works, much of that question doesn't need to be answered in its original form.
+
+### The pattern
+
+One agent role at a time, user-picked from an installed set, transferable in Settings — the same shape Android already uses for default launcher, default browser, default SMS, default dialer. Whichever app holds the role gets `SUBMIT_LLM_REQUEST`. Voice triggers and the assist gesture route to it. Other agents stay installed, dormant, one toggle away.
+
+Android already exposes this via `RoleManager` (`ROLE_HOME`, `ROLE_BROWSER`, `ROLE_SMS`, `ROLE_DIALER`, `ROLE_ASSISTANT`). Users understand default-app swapping; we add zero new mental model.
+
+### LLM and orchestrator are orthogonal axes
+
+The cleanest framing: **"pick your model, pick your assistant — they're not the same choice."**
+
+- **LLM** — device-level. OEM bakes the default; eventually swappable via pluggable models (S4 territory, gated independently).
+- **Orchestrator** — user-level. The agent app that holds the role shapes *the loop around the model* — what the system prompt says, which tools are in scope, how consent is surfaced, what the chat / voice UI looks like. It does not change what the model is.
+
+Strategically this is a claim App Functions cannot make: Google picks the model *and* the orchestrator, bundled. AAOSP letting both be chosen, independently, is a positioning surface we currently do not use.
+
+### Where orchestration lives today (so we know what would change)
+
+Before deciding what becomes orchestrator-configurable, it's worth stating plainly where each responsibility sits in v0.5.1:
+
+- **System prompt composition** — `LlmManagerService.composeSystemPrompt()`. Framework.
+- **Agent loop** — `LlmManagerService.runChain()`, including iteration, tool-call parsing, needs-permission short-circuit, context management. Framework.
+- **Consent policy + persistence** — `ConsentGate` + `HitlConsentStore`. Framework.
+- **Tool dispatch** — `LlmManagerService.invokeMcpTool` / `dispatchOneTool`. Framework.
+- **Audit log** — framework.
+- **Chat UI + session state + consent card / tool-call card rendering** — `AgenticLauncher`. App-side, but currently *the only* app holding `SUBMIT_LLM_REQUEST`.
+
+Read bluntly: **what we currently call "the orchestrator" already lives with the LLM service.** The launcher is the orchestrator's *face*, not its brain. Making orchestrators pluggable means deciding which framework-side pieces become *parameterized* by the role-holder, and which stay enforced substrate.
+
+### The "what's configurable" question — three splits
+
+**Option A — orchestrator owns the loop.** Each agent app implements its own `runChain`. The system service becomes an inference engine only: submit prompt, return tokens. The agent parses tool calls, dispatches to MCPs, runs iteration, surfaces consent itself.
+
+- *Pros:* maximum variety. A radically different loop is possible (speculative tool calls, retrieval-augmented reasoning, multi-turn planning schemas).
+- *Cons:* the loop *is* the trust boundary. Moving it into app code makes the permission-laundering invariant unenforceable from the OS side — a third-party orchestrator can short-circuit it. Tool dispatch + HITL + audit get duplicated across every orchestrator and subtly diverge.
+
+**Option B — orchestrator declares policy on top of a framework loop.** `LlmManagerService` keeps `runChain` and the invariants. Orchestrators declare, per role-holder:
+
+- System prompt (full override, or base + additions)
+- Tool allowlist / denylist drawn from what the user has granted
+- HITL policy (can be *stricter* than default — force per-call consent on read tools, extend cooldowns — never looser)
+- UI surfaces (consent card layout, tool-call display, streaming renderer)
+- Preferred model (framework may or may not honor depending on what's loaded; hint, not guarantee)
+
+- *Pros:* trust boundary stays in `system_server`. Invariants stay enforceable. No duplication. The "paranoid agent" becomes a policy configuration, not a rewrite. Variety is still real: a focus-mode agent with a minimal prompt and read-only allowlist is genuinely different from a dev-mode agent exposing raw token streams.
+- *Cons:* variety is bounded. Orchestrators differ in *scope and presentation*, not in *algorithm*. A radically novel loop shape needs either Option C hooks or an AAOSP core change.
+
+**Option C — hybrid.** Framework loop with well-defined extension points at specific stages (prompt composition, pre-dispatch tool filter, post-tool result transform, iteration limit override). Orchestrators can hook individual stages without owning the whole loop.
+
+- *Pros:* most flexibility with the trust boundary intact.
+- *Cons:* each extension point is an API commitment we maintain forever. Design those badly and we've shipped a bad API; design them well and we've pre-committed to every possible orchestrator shape users haven't asked for yet.
+
+**Position: Option B for the first cut.** It preserves the invariants we care about, delivers real variety, and does not over-commit on API surface. Option C is the natural evolution if Option B's variety limits bite; Option A is probably never right because the cost is the trust story.
+
+### Role flavor — reuse or introduce
+
+**Flavor 1 — reuse `ROLE_ASSISTANT`.** The role already exists (Android 10+); Google Assistant / Bixby ride on it. Assist gesture and the Settings default-assistant surface are already wired.
+
+- *Pros:* zero new framework API, existing UI, existing user model.
+- *Cons:* semantic coexistence with GMS when an OEM layers GMS on top of AAOSP. On pure AAOSP this is clean; on an OEM build shipping both, what exactly happens when the Google Assistant app is installed and also holds the role needs a clear story.
+
+**Flavor 2 — introduce `ROLE_AGENTIC_ASSISTANT`.** AAOSP-specific role, explicit about what the role *means* (has `SUBMIT_LLM_REQUEST`, receives MCP tool-call dispatch, participates in the consent flow).
+
+- *Pros:* no GMS semantic collision; the role's meaning is exactly what AAOSP needs it to be.
+- *Cons:* new framework surface; OEMs have to wire it into their Settings; user has to learn a new default-app category.
+
+**Position: Flavor 1 for the first cut.** Fall back to Flavor 2 only if the GMS coexistence story proves unworkable in practice — which we can only tell once an OEM actually tries it.
+
+### What this resolves from the open-grants discussion
+
+Most of the S2 threats from the grants section collapse under "one orchestrator at a time, user-picked":
+
+- **Compute drain** — one app, foreground. No per-app rate-limiting needed.
+- **Permission fatigue** — no per-app Allow dialogs. One default-assistant toggle.
+- **Trust UX metaphor** — "default assistant, like default launcher" is the metaphor we were missing.
+- **Prompt-injection-as-tool-exfil** — still a risk in principle, but the orchestrator *is* the agent; the user chose to give it that scope. Same trust posture as giving the default SMS app access to SMS.
+
+What this does *not* resolve: **programmatic LLM access for non-orchestrator apps.** An AI keyboard wanting smart-reply, a photo app wanting on-device tagging — these are not orchestrator-shaped. They need LLM access without holding the agent role. That's a separate need, and the role-based pattern doesn't answer it. It stays an open question for another release cycle; treating them as distinct problems is probably itself a win, because the role answer is clean even if the permission answer isn't yet.
+
+### Orchestrator diversity as a product surface
+
+Some variants that would be genuinely useful and commercially differentiating:
+
+- **Focus-mode agent** — read-only tools, no writes, no proactive interruption, minimal UI, optimized for concentration work.
+- **Kids-mode agent** — heavy content filtering, limited tool surface, per-app allowlist curated by parents.
+- **Accessibility-first agent** — voice-primary, larger text, slower pacing, tuned for screen-reader integration.
+- **Dev-mode agent** — exposes `dumpsys` equivalents, tool-call inspection, raw prompt viewer, timing breakdown.
+- **Paranoid agent** — refuses any tool that crosses app boundaries, single-app scope only, no memory persistence across turns.
+
+Each of these is a different system prompt + tool allowlist + HITL policy + UI, not a different loop. Option B covers them all.
+
+Ecosystem win: any developer can ship one of these, differentiate on UX + prompts + policy, without touching the system LLM or the agent loop. The barrier to "ship an AI product on Android" drops from *"bundle llama.cpp and do everything yourself"* to *"write a system prompt, declare your tool preferences, draw a chat UI."*
+
+### What AgenticLauncher becomes
+
+Today AgenticLauncher holds `ROLE_HOME` (home screen) *and* is the only app with `SUBMIT_LLM_REQUEST` (the de-facto default agent). Under this design those split cleanly:
+
+- **Launcher role** (`ROLE_HOME`) — app grid, home screen, always shipped.
+- **Agent role** (`ROLE_ASSISTANT`) — chat UI, voice routing, agent policy.
+
+They can still live in the same app — the first-cut AgenticLauncher keeps both. But the *roles* are independent: another orchestrator app can take the agent role without touching the launcher, and vice versa. Someone could ship a voice-first agent with no home-screen UI at all.
+
+### Refactor implications — what becomes parameterized
+
+Moderate refactor, not a rewrite. Concretely:
+
+- **`composeSystemPrompt`** — becomes parameterized by the role-holder's declared base prompt + additions. Framework still owns the *shape* (tool block injection, grounding rules, safety preamble — the enforced parts), orchestrator supplies the *voice*.
+- **Tool registry visibility** — `runChain` consults a role-holder-supplied allowlist when assembling the tool block. Framework still owns dispatch and the invariants; orchestrator only narrows, never widens.
+- **Consent UI** — the framework still calls `ConsentGate.awaitDecision()`; the *rendering* of the prompt is delegated via a Binder callback to the role-holder. Default rendering stays in AgenticLauncher.
+- **Tool-call display** — already callback-driven today. The role-holder decides how to render.
+- **Session ownership** — sessions become owned by the `(caller-uid, role-holder)` pair, so switching default agent doesn't bleed one agent's history into another. Existing sessions either migrate (explicit user action) or stay attached to the previous role-holder.
+
+Nothing in this list requires tearing out `runChain`. The loop stays where it is; the *inputs* to the loop become role-holder-supplied.
+
+### Open questions (real, not ceremonial)
+
+- **Session continuity across orchestrator switches.** If the user swaps from AgenticLauncher to a focus-mode agent, do they see their old chat history? Probably no, by default — different agents are different surfaces — but there should be an explicit "import" path.
+- **Concurrency — ever?** First cut is strictly one-at-a-time. Is there a future where a background transcription agent and a foreground chat agent coexist? Probably yes eventually; the scheduling problem from S2 comes back in full force if so. Defer.
+- **GMS coexistence** under Flavor 1 — only verifiable once an OEM tries it. May push us to Flavor 2 later.
+- **Extension-point shape** if Option B's variety becomes a limit — we don't know which stages orchestrators will want to hook until we have a few real ones. Don't design Option C speculatively; wait for evidence.
+- **What model-preference means.** Orchestrator says "I prefer Qwen 3B tool-tuned." Framework might have Phi-3 loaded and won't swap. Is that a soft warning to the user, a hard failure, or silently honored best-effort?
+
+### Why not "decided" yet
+
+Two gating conditions before implementation starts:
+
+1. **v0.6 streaming work + launcher UX cluster should land first.** Refactoring the role-holder interface while the chat UX is in flux is rework waiting to happen.
+2. **The session-continuity and concurrency questions above need a clearer answer than "probably."** Not research-grade answers — just enough design for a v1 that can be lived with.
+
+If both resolve well, this is a strong candidate for **v0.8 or v0.9** as its own release theme ("Default agent — role-based orchestrator swap"). Pairs naturally with the voice work parked above, since voice needs a well-defined role-invocation surface to route to.
