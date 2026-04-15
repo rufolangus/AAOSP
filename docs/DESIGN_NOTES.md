@@ -463,11 +463,11 @@ tracking. Attempting earlier invites rework.
 - **`SUBMIT_LLM_REQUEST`** — who can ask the system LLM to do work. Today: launcher only.
 - **`BIND_LLM_MCP_SERVICE`** — who the system can bind to as an MCP tool provider. Today: platform-signed apps + `/system_ext/priv-app/`.
 
-These are independent axes. Opening one does not require opening the other. Combined with model provenance, they generate distinct snapshots:
+These are independent axes. Opening one does not require opening the other. **S0–S3 enumerate the grant-axis combinations** (which side(s) get user-grantable). **S4 is a separate axis** — model provenance — layered on top of S3 to show what changes if apps can also bring their own models. S4 isn't "more open than S3"; it's S3 with a different question added.
 
 ### Scenario map
 
-| | S0 status quo | S1 open tools | S2 open submitters | S3 both | S4 + apps bring models |
+| | S0 status quo | S1 open tools | S2 open submitters | S3 both | S4 = S3 + apps bring models |
 |---|---|---|---|---|---|
 | Who can submit prompts? | Launcher only | Launcher only | Any user-granted app | Any user-granted app | Any user-granted app |
 | Who can provide tools? | Platform-signed only | Any user-enabled app | Platform-signed only | Any user-enabled app | Any user-enabled app |
