@@ -234,19 +234,6 @@ calibrated logprobs.
 
 **Why**: Both grants are `signature|privileged` today. Opening either to user-grant is a fundamental change in AAOSP's trust posture, not a phased rollout. The trade space is mapped in [`DESIGN_NOTES.md` § "Opening up `SUBMIT_LLM_REQUEST` and `BIND_LLM_MCP_SERVICE`"](./DESIGN_NOTES.md). No decision yet — read the design note before proposing implementation.
 
-### Android App Functions adapter (dual-publish MCP tools as `@AppFunction`)
-
-**Why**: Android 16 ships [`android.app.appfunctions.*`](https://developer.android.com/ai/appfunctions) as a platform feature plus `androidx.appfunctions` as a Jetpack library — on-device Binder dispatch with an `@AppFunction` Kotlin annotation and an `EXECUTE_APP_FUNCTIONS` signature-level permission. Google explicitly positions this as *"the mobile equivalent of tools within the Model Context Protocol (MCP)"* — it's the same architectural layer where AAOSP already does dispatch via our MCP manifest + `IMcpToolProvider`. App Functions is *complementary* to AAOSP, not a competitor; what Google keeps closed (and what AAOSP actually replaces) is the runtime layer above it — AICore, Gemini Nano, Google Assistant. An adapter that auto-exposes registered AAOSP MCP tools as `@AppFunction`s means apps get both dispatch surfaces from one `<mcp-server>` manifest block — reachable from AAOSP's orchestrator *and* from any Android 16+ caller holding `EXECUTE_APP_FUNCTIONS` (including Google Assistant if GMS is present).
-
-**Sketch**: new `AppFunctionsAdapter` in `LlmManagerService` that
-walks `McpRegistry` and emits the `androidx.appfunctions` XML schema
-+ a generated `AppFunctionContext` bridge to `IMcpToolProvider`.
-Manifest still declares `<mcp-server>` only; the adapter generates
-the App Functions side at registration time.
-
-**Depends on**: rebasing the framework fork to Android 16 (currently
-v15). Until then, this is design-only.
-
 ### APEX-updatable model
 
 **Why**: the `.gguf` currently lives in `/product/etc/llm/` which is

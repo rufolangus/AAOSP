@@ -536,7 +536,7 @@ The text chat UI is engineer-satisfying; voice is regular-person satisfying. Eve
 New system service: `ILlmVoiceService` alongside `ILlmService`, not extension of it. Two reasons:
 
 1. Voice is orthogonal to tool-calling reasoning. `LlmManagerService` should remain focused on one model doing agentic loops. Voice is its own concern with its own lifecycle (streaming audio buffers, partial-transcript updates, TTS playback control).
-2. Lets OEM / enterprise builds swap the voice model (different languages, accessibility-tuned voices, kids' voices) without touching reasoning. Same commercial-extension logic as keeping `InferenceScheduler` pluggable.
+2. Lets future builds swap the voice model (different languages, accessibility-tuned voices, kids' voices) without touching reasoning. Same modularity logic as keeping `InferenceScheduler` pluggable.
 
 Launcher flow: mic button → `ILlmVoiceService.transcribe()` (streaming partial transcripts back to UI for feedback) → full text → existing `ILlmService.submit()` → text response → `ILlmVoiceService.speak()` → audio playback. Waveform animation + push-to-talk UX on the launcher side.
 
@@ -650,7 +650,7 @@ The cleanest framing: **"pick your model, pick your assistant — they're not th
 - **LLM** — device-level. OEM bakes the default; eventually swappable via pluggable models (S4 territory, gated independently).
 - **Orchestrator** — user-level. The agent app that holds the role shapes *the loop around the model* — what the system prompt says, which tools are in scope, how consent is surfaced, what the chat / voice UI looks like. It does not change what the model is.
 
-Strategically this is a claim the stock Android 16 agentic stack (AICore + Gemini Nano + Google Assistant) cannot make: on that stack, Google picks the model *and* the orchestrator, bundled and non-swappable. AAOSP letting both be chosen, independently and openly, is a positioning surface we currently do not use.
+Letting model and orchestrator be chosen independently — and openly — is a positioning surface AAOSP has but currently does not use.
 
 ### Where orchestration lives today (so we know what would change)
 
@@ -737,7 +737,7 @@ What this does *not* resolve: **programmatic LLM access for non-orchestrator app
 
 ### Orchestrator diversity as a product surface
 
-Some variants that would be genuinely useful and commercially differentiating:
+Some variants that would be genuinely useful:
 
 - **Focus-mode agent** — read-only tools, no writes, no proactive interruption, minimal UI, optimized for concentration work.
 - **Kids-mode agent** — heavy content filtering, limited tool surface, per-app allowlist curated by parents.
