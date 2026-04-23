@@ -56,6 +56,9 @@ On Android 15 there was no cross-app agent substrate: no tool-declaration schema
 
 Android 16 later shipped App Functions (`@AppFunction` + `AppFunctionManager`) as its own cross-app tool-invocation layer. Google's own docs call it *"the mobile equivalent of tools within the Model Context Protocol (MCP)."* That's convergent evidence — the primitive belongs at the platform tier. AAOSP predates that and stays on Android 15 as the reference artifact. It does not compete with App Functions, does not migrate to Android 16, and does not attempt to be a production runtime for newer devices.
 
+
+The next step in this lineage on Android 16 is [**JibarOS**](https://github.com/Jibar-OS/JibarOS) — same conviction (on-device AI belongs at the platform tier), broader scope. Where AAOSP's `LlmManagerService` is one llama.cpp LLM purpose-built for MCP tool-calling, JibarOS's Open Intelligence Runtime is twelve capabilities (text / audio / vision) across four backends (llama.cpp, whisper.cpp, ONNX Runtime, libmtmd) with pooled residency, KV-budgeted memory, and a cross-backend priority scheduler. An MCP-native agent — including AAOSP's exact pattern — could sit on top of JibarOS and use it as the inference substrate. Complementary, not competitive. AAOSP stays on Android 15 as the MCP-native reference artifact; JibarOS picks up the runtime layer on Android 16.
+
 ### What's Apache 2.0 in AAOSP
 
 - `<mcp-server>` manifest schema + `McpManifestParser` + `McpRegistry` (the tool-declaration layer).
